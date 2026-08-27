@@ -39,7 +39,7 @@ export function HomeScreen() {
             <Eyebrow alpha={0.36}>Left to spend</Eyebrow>
             <Amount value={budget.leftToSpend.toLocaleString('en-US')} />
             <T size={12.5} lineHeight={17.5} alpha={0.46}>
-              of ${budget.monthlyBudget.toLocaleString('en-US')} · {budget.daysRemaining} days remaining
+              of {budget.monthlyBudget.toLocaleString('en-US')} € · {budget.daysRemaining} days remaining
             </T>
           </View>
           <BudgetRing percent={budget.percentUsed} />
@@ -48,7 +48,7 @@ export function HomeScreen() {
         <View style={styles.statusRow}>
           <StatusDot />
           <T size={13} lineHeight={17.5} alpha={0.78} style={{ flex: 1 }}>
-            On track — about ${budget.aheadOfPace} ahead of pace.
+            On track — about {budget.aheadOfPace} € ahead of pace.
           </T>
         </View>
       </HeroCard>
@@ -58,10 +58,10 @@ export function HomeScreen() {
           <Eyebrow tracking={0.14}>Daily pace</Eyebrow>
           <View style={{ gap: 5 }}>
             <T weight="light" size={27} lineHeight={27} tracking={-0.03}>
-              ${budget.dailyPace}
+              {budget.dailyPace} €
             </T>
             <T size={11.5} alpha={0.4}>
-              ${budget.dailyAvailable} available
+              {budget.dailyAvailable} € available
             </T>
           </View>
         </Card>

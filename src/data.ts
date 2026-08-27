@@ -24,7 +24,7 @@ export const categories = [
 
 export const categoryCount = 7;
 
-export const nextOut = { label: 'Rent · Sep 1', amount: '$1,450' };
+export const nextOut = { label: 'Rent · Sep 1', amount: '1,450 €' };
 
 export const spend = {
   total: '1,960',
@@ -34,17 +34,17 @@ export const spend = {
     {
       title: 'Today',
       items: [
-        { name: 'Blue Bottle', category: 'DINING', amount: '$6.40' },
-        { name: 'Migros', category: 'GROCERIES', amount: '$38.10' },
-        { name: 'SBB Ticket', category: 'TRANSPORT', amount: '$12.80' },
+        { name: 'Blue Bottle', category: 'DINING', amount: '6.40 €' },
+        { name: 'Migros', category: 'GROCERIES', amount: '38.10 €' },
+        { name: 'SBB Ticket', category: 'TRANSPORT', amount: '12.80 €' },
       ],
     },
     {
       title: 'Yesterday',
       items: [
-        { name: 'Kino Riffraff', category: 'LEISURE', amount: '$21.00' },
-        { name: 'Spotify', category: 'SUBSCRIPTION', amount: '$11.99' },
-        { name: 'Salary', category: 'INCOME', amount: '+$4,200', income: true },
+        { name: 'Kino Riffraff', category: 'LEISURE', amount: '21.00 €' },
+        { name: 'Spotify', category: 'SUBSCRIPTION', amount: '11.99 €' },
+        { name: 'Salary', category: 'INCOME', amount: '+4,200 €', income: true },
       ],
     },
   ],
@@ -64,7 +64,7 @@ export const trends = {
     { label: 'JUL', height: 44 },
     { label: 'AUG', height: 50, active: true },
   ],
-  paceNote: '$160 lighter than the same day in July.',
+  paceNote: '160 € lighter than the same day in July.',
   split: [
     { name: 'Housing', percent: '46%', alpha: 0.95, dash: 125, offset: 0 },
     { name: 'Dining', percent: '19%', alpha: 0.66, dash: 50.5, offset: -127.2 },
@@ -79,14 +79,14 @@ export const profile = {
   name: 'Lena Brunner',
   since: 'MEMBER SINCE 2024',
   netWorth: '28,410',
-  delta: '+$620 this month',
+  delta: '+620 € this month',
   accounts: [
-    { name: 'Checking', value: '$3,140' },
-    { name: 'Savings', value: '$25,900' },
-    { name: 'Credit card', value: '−$630' },
+    { name: 'Checking', value: '3,140 €' },
+    { name: 'Savings', value: '25,900 €' },
+    { name: 'Credit card', value: '−630 €' },
   ],
   settings: [
-    { name: 'Monthly budget', value: '$3,200' },
+    { name: 'Monthly budget', value: '3,200 €' },
     { name: 'Categories', value: '7' },
     { name: 'Weekly recap', value: 'SUN' },
     { name: 'Appearance', value: 'DARK' },

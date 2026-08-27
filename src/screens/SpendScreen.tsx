@@ -32,7 +32,7 @@ export function SpendScreen() {
             {spend.transactionCount} transactions
           </T>
           <T size={11.5} alpha={0.4}>
-            avg ${spend.average}
+            avg {spend.average} €
           </T>
         </View>
       </HeroCard>

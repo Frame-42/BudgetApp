@@ -80,7 +80,7 @@ export function TrendsScreen() {
         <View style={styles.splitRow}>
           <SplitDonut segments={trends.split}>
             <T weight="light" size={19} lineHeight={19} tracking={-0.03}>
-              ${trends.monthlyAverage}
+              {trends.monthlyAverage} €
             </T>
             <Eyebrow size={8.5} alpha={0.32} tracking={0.12}>
               avg / mo

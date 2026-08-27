@@ -59,22 +59,23 @@ export function AddScreen({
       <HeroCard style={styles.hero}>
         <Eyebrow>Amount</Eyebrow>
         <View style={styles.amountRow}>
-          <T weight="light" size={24} lineHeight={24} alpha={0.36}>
-            $
-          </T>
           <T
             weight="light"
             size={52}
-            lineHeight={49}
+            lineHeight={52 * 1.15}
             tracking={-0.04}
             style={{ color: color.textBright }}
           >
             {display}
           </T>
+          {/* The caret sits against the last digit; the symbol trails the whole figure. */}
           <View style={styles.caret} />
+          <T weight="light" size={24} lineHeight={24} alpha={0.36}>
+            €
+          </T>
         </View>
         <T size={11.5} alpha={0.38}>
-          Leaves ${remaining.toLocaleString('en-US')} for {budget.daysRemaining} days
+          Leaves {remaining.toLocaleString('en-US')} € for {budget.daysRemaining} days
         </T>
       </HeroCard>
 

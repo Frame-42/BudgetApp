@@ -3,6 +3,13 @@ import { Platform, StyleSheet, Text, TextProps, View, ViewProps, ViewStyle } fro
 import { LinearGradient } from 'expo-linear-gradient';
 import { color, fg, font, heroAngle, radius, track } from '../theme';
 
+/**
+ * Geist needs ~1.15em of line box or iOS crops the ascenders of tall figures.
+ * The CSS source leans tighter than that (.94–1), so every line height here is
+ * clamped up to this floor.
+ */
+const MIN_LEADING = 1.15;
+
 /** Android adds extra leading to text; the design's tight line heights need it off. */
 const noPad = Platform.select({ android: { includeFontPadding: false }, default: {} }) as object;
 
@@ -26,7 +33,7 @@ export function Eyebrow({
         {
           fontFamily: font.monoMedium,
           fontSize: size,
-          lineHeight: size,
+          lineHeight: size * 1.25,
           letterSpacing: track(tracking, size),
           color: fg(alpha),
         },
@@ -63,7 +70,7 @@ export function T({
         {
           fontFamily: font[weight],
           fontSize: size,
-          lineHeight: lineHeight ?? size * 1.3,
+          lineHeight: Math.max(lineHeight ?? size * 1.3, size * MIN_LEADING),
           letterSpacing: track(tracking, size),
           color: alpha === 1 ? color.text : fg(alpha),
         },
@@ -75,7 +82,7 @@ export function T({
   );
 }
 
-/** The hero number: a dimmed light "$" on the same baseline as the figure. */
+/** The hero number: the figure, trailed by a dimmed light "€" on the same baseline. */
 export function Amount({
   value,
   size = 54,
@@ -89,19 +96,19 @@ export function Amount({
 }) {
   return (
     <View style={styles.amountRow}>
-      <T weight="light" size={symbolSize} lineHeight={symbolSize} alpha={0.42}>
-        $
-      </T>
       <T
         weight="light"
         size={size}
-        lineHeight={size * 0.94}
+        lineHeight={size * MIN_LEADING}
         tracking={-0.035}
         style={{ color: color.textBright }}
       >
         {value}
       </T>
       {children}
+      <T weight="light" size={symbolSize} lineHeight={symbolSize * MIN_LEADING} alpha={0.42}>
+        €
+      </T>
     </View>
   );
 }
@@ -165,7 +172,7 @@ export function StatusDot() {
 }
 
 const styles = StyleSheet.create({
-  amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   divider: { height: 1 },
   glow: {
     shadowColor: color.accentGlow,
