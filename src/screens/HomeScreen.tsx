@@ -3,22 +3,28 @@ import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BudgetRing } from '../components/Charts';
 import { Amount, Card, Divider, Eyebrow, HeroCard, StatusDot, T } from '../components/primitives';
-import { budget, categories, categoryCount, nextOut } from '../data';
+import type { HomeData } from '../queries/home';
+import { euroLabel, figure } from '../format';
 import { color, radius, w } from '../theme';
 
 /** 01 — Home: on track at a glance. */
-export function HomeScreen() {
-  /** Today is the filled bar; the day still to come stays dimmer than the rest. */
-  const barColor = (i: number) =>
-    i === budget.weekActiveIndex ? color.mark : i === budget.week.length - 1 ? w(0.08) : w(0.14);
+export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
+  const firstName = name.split(' ')[0];
+  const hour = new Date().getHours();
+  const partOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+  const ahead = data.aheadOfPaceCents;
+
+  /** Today is the filled bar; the rest of the week stays dimmer than the past. */
+  const barColor = (day: HomeData['week'][number]) =>
+    day.today ? color.mark : day.future ? w(0.08) : w(0.14);
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
         <View style={{ gap: 5 }}>
-          <Eyebrow size={10}>{budget.month}</Eyebrow>
+          <Eyebrow size={10}>{data.month}</Eyebrow>
           <T size={19} lineHeight={21} tracking={-0.01}>
-            {budget.greeting}
+            Good {partOfDay}, {firstName}
           </T>
         </View>
         <LinearGradient
@@ -28,7 +34,7 @@ export function HomeScreen() {
           style={styles.avatar}
         >
           <T weight="medium" size={12} alpha={0.72}>
-            {budget.initial}
+            {firstName.charAt(0)}
           </T>
         </LinearGradient>
       </View>
@@ -37,18 +43,20 @@ export function HomeScreen() {
         <View style={styles.heroTop}>
           <View style={{ gap: 9 }}>
             <Eyebrow alpha={0.36}>Left to spend</Eyebrow>
-            <Amount value={budget.leftToSpend.toLocaleString('en-US')} />
+            <Amount value={figure(data.leftToSpendCents)} />
             <T size={12.5} lineHeight={17.5} alpha={0.46}>
-              of {budget.monthlyBudget.toLocaleString('en-US')} € · {budget.daysRemaining} days remaining
+              of {figure(data.monthBudgetCents)} € · {data.daysRemaining} days remaining
             </T>
           </View>
-          <BudgetRing percent={budget.percentUsed} />
+          <BudgetRing percent={data.percentUsed} />
         </View>
         <Divider />
         <View style={styles.statusRow}>
           <StatusDot />
           <T size={13} lineHeight={17.5} alpha={0.78} style={{ flex: 1 }}>
-            On track — about {budget.aheadOfPace} € ahead of pace.
+            {ahead >= 0
+              ? `On track — about ${euroLabel(ahead)} ahead of pace.`
+              : `Over pace — about ${euroLabel(-ahead)} beyond the run rate.`}
           </T>
         </View>
       </HeroCard>
@@ -58,10 +66,10 @@ export function HomeScreen() {
           <Eyebrow tracking={0.14}>Daily pace</Eyebrow>
           <View style={{ gap: 5 }}>
             <T weight="light" size={27} lineHeight={27} tracking={-0.03}>
-              {budget.dailyPace} €
+              {figure(data.dailyPaceCents)} €
             </T>
             <T size={11.5} alpha={0.4}>
-              {budget.dailyAvailable} € available
+              {figure(data.dailyAvailableCents)} € available
             </T>
           </View>
         </Card>
@@ -69,10 +77,14 @@ export function HomeScreen() {
         <Card style={styles.statTile}>
           <Eyebrow tracking={0.14}>This week</Eyebrow>
           <View style={styles.weekRow}>
-            {budget.week.map((h, i) => (
+            {data.week.map((day, i) => (
               <View
                 key={i}
-                style={[styles.weekBar, { height: `${h * 100}%`, backgroundColor: barColor(i) }]}
+                style={[
+                  styles.weekBar,
+                  // A day with nothing spent still needs to read as a bar.
+                  { height: `${Math.max(4, day.fraction * 100)}%`, backgroundColor: barColor(day) },
+                ]}
               />
             ))}
           </View>
@@ -83,25 +95,28 @@ export function HomeScreen() {
         <View style={styles.rowBetween}>
           <Eyebrow tracking={0.14}>Categories</Eyebrow>
           <T size={11.5} alpha={0.38}>
-            {categories.length} of {categoryCount}
+            {data.categories.length} of {data.categoryCount}
           </T>
         </View>
         <View style={{ gap: 15 }}>
-          {categories.map((cat) => (
-            <View key={cat.name} style={{ gap: 8 }}>
+          {data.categories.map((cat) => (
+            <View key={cat.id} style={{ gap: 8 }}>
               <View style={styles.rowBaseline}>
                 <T size={13.5} alpha={0.86}>
                   {cat.name}
                 </T>
                 <T weight="mono" size={12} alpha={0.44}>
-                  {cat.spent} / {cat.limit}
+                  {figure(cat.spentCents)} / {figure(cat.limitCents)}
                 </T>
               </View>
               <View style={styles.track}>
                 <View
                   style={[
                     styles.trackFill,
-                    { width: `${cat.fill * 100}%`, backgroundColor: `rgba(233,235,242,${cat.alpha})` },
+                    {
+                      width: `${cat.fill * 100}%`,
+                      backgroundColor: `rgba(233,235,242,${cat.alpha})`,
+                    },
                   ]}
                 />
               </View>
@@ -110,19 +125,21 @@ export function HomeScreen() {
         </View>
       </Card>
 
-      <Card quiet style={styles.nextOut}>
-        <View style={{ gap: 4 }}>
-          <Eyebrow alpha={0.32} tracking={0.14}>
-            Next out
-          </Eyebrow>
-          <T size={13} alpha={0.8}>
-            {nextOut.label}
+      {data.nextOut ? (
+        <Card quiet style={styles.nextOut}>
+          <View style={{ gap: 4 }}>
+            <Eyebrow alpha={0.32} tracking={0.14}>
+              Next out
+            </Eyebrow>
+            <T size={13} alpha={0.8}>
+              {data.nextOut.label}
+            </T>
+          </View>
+          <T size={15} alpha={0.6} tracking={-0.02}>
+            {euroLabel(Math.abs(data.nextOut.amountCents))}
           </T>
-        </View>
-        <T size={15} alpha={0.6} tracking={-0.02}>
-          {nextOut.amount}
-        </T>
-      </Card>
+        </Card>
+      ) : null}
     </View>
   );
 }

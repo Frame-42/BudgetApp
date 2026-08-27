@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,40 +18,11 @@ import { SpendScreen } from './src/screens/SpendScreen';
 import { AddScreen } from './src/screens/AddScreen';
 import { TrendsScreen } from './src/screens/TrendsScreen';
 import { YouScreen } from './src/screens/YouScreen';
-import { addCategories } from './src/data';
+import { BudgetProvider, useBudget } from './src/state/BudgetProvider';
+import { parseAmountToCents } from './src/format';
 import { GUTTER, color } from './src/theme';
 
-function Phone() {
-  const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState(0);
-
-  /* Entry state lives above the screens so it survives a trip to another tab. */
-  const [amount, setAmount] = useState('44');
-  const [category, setCategory] = useState(addCategories[0]);
-
-  const screens = [
-    <HomeScreen key="home" />,
-    <SpendScreen key="spend" />,
-    <AddScreen
-      key="add"
-      amount={amount}
-      onAmountChange={setAmount}
-      category={category}
-      onCategoryChange={setCategory}
-      onCancel={() => {
-        setAmount('');
-        setTab(0);
-      }}
-      onSubmit={() => {
-        setAmount('');
-        setCategory(addCategories[0]);
-        setTab(1);
-      }}
-    />,
-    <TrendsScreen key="trends" />,
-    <YouScreen key="you" />,
-  ];
-
+function Background({ children }: { children: React.ReactNode }) {
   return (
     <LinearGradient
       colors={color.bg as unknown as [string, string, string]}
@@ -61,19 +32,72 @@ function Phone() {
       end={{ x: 0.52, y: 1 }}
       style={styles.fill}
     >
+      {children}
+    </LinearGradient>
+  );
+}
+
+function Phone() {
+  const insets = useSafeAreaInsets();
+  const { data, addExpense, reset } = useBudget();
+  const [tab, setTab] = useState(0);
+
+  /* Entry state lives above the screens so it survives a trip to another tab. */
+  const [amount, setAmount] = useState('');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!categoryId && data) setCategoryId(data.add.categories[0]?.id ?? null);
+  }, [data, categoryId]);
+
+  if (!data) {
+    return (
+      <Background>
+        <StatusBar style="light" />
+      </Background>
+    );
+  }
+
+  const submit = async () => {
+    await addExpense({ amountCents: parseAmountToCents(amount), categoryId });
+    setAmount('');
+    setTab(1);
+  };
+
+  const screens = [
+    <HomeScreen key="home" data={data.home} name={data.you.name} />,
+    <SpendScreen key="spend" data={data.spend} month={data.home.month} />,
+    <AddScreen
+      key="add"
+      amount={amount}
+      onAmountChange={setAmount}
+      categories={data.add.categories}
+      categoryId={categoryId}
+      onCategoryChange={setCategoryId}
+      leftToSpendCents={data.home.leftToSpendCents}
+      daysRemaining={data.home.daysRemaining}
+      onCancel={() => {
+        setAmount('');
+        setTab(0);
+      }}
+      onSubmit={submit}
+    />,
+    <TrendsScreen key="trends" data={data.trends} />,
+    <YouScreen key="you" data={data.you} onReset={reset} />,
+  ];
+
+  return (
+    <Background>
       <StatusBar style="light" />
       <ScrollView
         style={styles.fill}
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: Math.max(insets.top, 24) + 6 },
-        ]}
+        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 24) + 6 }]}
         showsVerticalScrollIndicator={false}
       >
         {screens[tab]}
       </ScrollView>
       <TabBar active={tab} onChange={setTab} bottomInset={insets.bottom} />
-    </LinearGradient>
+    </Background>
   );
 }
 
@@ -91,7 +115,9 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <Phone />
+      <BudgetProvider>
+        <Phone />
+      </BudgetProvider>
     </SafeAreaProvider>
   );
 }

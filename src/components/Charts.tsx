@@ -37,26 +37,48 @@ export function BudgetRing({ percent }: { percent: number }) {
   );
 }
 
-/** Trends — "Pace vs last month": solid August line over a dashed July line. */
-export function PaceChart() {
+/**
+ * Trends — "Pace vs last month": cumulative spend this month over last month's
+ * dashed trace. Both series are fractions of the same peak, laid out on a shared
+ * day axis, so the two lines are directly comparable.
+ */
+const PLOT = { width: 320, top: 12, bottom: 100 };
+
+function linePath(values: number[], days: number): string {
+  if (values.length === 0) return '';
+  const x = (i: number) => (days <= 1 ? 0 : (i / (days - 1)) * PLOT.width);
+  const y = (v: number) => PLOT.bottom - v * (PLOT.bottom - PLOT.top);
+  return values
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+    .join(' ');
+}
+
+export function PaceChart({ current, previous }: { current: number[]; previous: number[] }) {
+  const days = Math.max(current.length, previous.length, 2);
+  const head = current.length
+    ? {
+        x: ((current.length - 1) / (days - 1)) * PLOT.width,
+        y: PLOT.bottom - current[current.length - 1] * (PLOT.bottom - PLOT.top),
+      }
+    : null;
+
   return (
     <Svg viewBox="0 0 320 112" width="100%" height={112} fill="none" preserveAspectRatio="none">
       <Path d="M0 12h320M0 56h320M0 100h320" stroke={w(0.055)} strokeWidth={1} />
       <Path
-        d="M0 100C8.6 97.6 34.4 90.7 51.6 85.7C68.8 80.8 85.8 75.3 103 70.3C120.2 65.3 137.8 60.5 155 55.7C172.2 50.9 188.8 46.2 206 41.7C223.2 37.2 239 32.3 258 28.5C277 24.7 309.7 20.7 320 19.1"
+        d={linePath(previous, days)}
         stroke="rgba(244,245,247,.32)"
         strokeWidth={1.6}
         strokeDasharray="4 5"
         strokeLinecap="round"
       />
-      <Path
-        d="M0 100C8.6 98 34.4 92.6 51.6 88.2C68.8 83.8 85.8 78.4 103 73.6C120.2 68.8 137.8 63.9 155 59.3C172.2 54.7 197.5 48.3 206 46.1"
-        stroke={color.mark}
-        strokeWidth={2.1}
-        strokeLinecap="round"
-      />
-      <Circle cx={206} cy={46.1} r={3.4} fill={color.mark} />
-      <Circle cx={206} cy={46.1} r={7} fill="none" stroke="rgba(233,235,242,.22)" strokeWidth={1.2} />
+      <Path d={linePath(current, days)} stroke={color.mark} strokeWidth={2.1} strokeLinecap="round" />
+      {head ? (
+        <>
+          <Circle cx={head.x} cy={head.y} r={3.4} fill={color.mark} />
+          <Circle cx={head.x} cy={head.y} r={7} fill="none" stroke="rgba(233,235,242,.22)" strokeWidth={1.2} />
+        </>
+      ) : null}
     </Svg>
   );
 }
@@ -76,13 +98,25 @@ export function LegendRule({ dashed }: { dashed?: boolean }) {
 }
 
 /** Trends — "Where it goes": five arcs of one grey, stepped down in alpha. */
+const DONUT_CIRCUMFERENCE = 2 * Math.PI * 44;
+
 export function SplitDonut({
-  segments,
+  shares,
   children,
 }: {
-  segments: { alpha: number; dash: number; offset: number }[];
+  shares: { alpha: number; percent: number }[];
   children: React.ReactNode;
 }) {
+  // Each arc starts where the previous one ended; a negative dash offset walks
+  // the pattern forward around the ring.
+  let consumed = 0;
+  const segments = shares.map((share) => {
+    const dash = (share.percent / 100) * DONUT_CIRCUMFERENCE;
+    const segment = { alpha: share.alpha, dash, offset: -consumed };
+    consumed += dash;
+    return segment;
+  });
+
   return (
     <View style={styles.donut}>
       <Svg width={118} height={118} viewBox="0 0 118 118" fill="none">
@@ -97,7 +131,7 @@ export function SplitDonut({
               fill="none"
               stroke={`rgba(233,235,242,${s.alpha})`}
               strokeWidth={13}
-              strokeDasharray={`${s.dash} ${277 - s.dash}`}
+              strokeDasharray={`${s.dash} ${DONUT_CIRCUMFERENCE - s.dash}`}
               strokeDashoffset={s.offset}
             />
           ))}

@@ -1,0 +1,141 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+
+/**
+ * Tables that will eventually sync to an account. They all share the same four
+ * columns — id (UUID), updated_at, deleted_at, owner_id — and all of them get
+ * outbox triggers.
+ */
+export const SYNCED_TABLES = [
+  'accounts',
+  'categories',
+  'transactions',
+  'budgets',
+  'recurring',
+  'settings',
+] as const;
+
+export type SyncedTable = (typeof SYNCED_TABLES)[number];
+
+/** Columns every synced row carries. Kept as a string so the DDL stays readable. */
+const SYNC_COLUMNS = `
+  id          TEXT PRIMARY KEY NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  deleted_at  INTEGER,
+  owner_id    TEXT`;
+
+/**
+ * An append-only change log, fed by triggers rather than by the repositories, so
+ * that no write path can bypass it — including ones added long after this file.
+ */
+const outboxTriggers = (table: SyncedTable) => `
+CREATE TRIGGER ${table}_outbox_insert AFTER INSERT ON ${table} BEGIN
+  INSERT INTO outbox (table_name, row_id, op, queued_at)
+  VALUES ('${table}', NEW.id, 'upsert', NEW.updated_at);
+END;
+
+CREATE TRIGGER ${table}_outbox_update AFTER UPDATE ON ${table} BEGIN
+  INSERT INTO outbox (table_name, row_id, op, queued_at)
+  VALUES ('${table}', NEW.id,
+          CASE WHEN NEW.deleted_at IS NULL THEN 'upsert' ELSE 'delete' END,
+          NEW.updated_at);
+END;
+
+CREATE TRIGGER ${table}_outbox_delete AFTER DELETE ON ${table} BEGIN
+  INSERT INTO outbox (table_name, row_id, op, queued_at)
+  VALUES ('${table}', OLD.id, 'delete', strftime('%s','now') * 1000);
+END;
+`;
+
+const V1 = `
+CREATE TABLE accounts (
+  ${SYNC_COLUMNS},
+  name                  TEXT NOT NULL,
+  kind                  TEXT NOT NULL,
+  opening_balance_cents INTEGER NOT NULL DEFAULT 0,
+  currency              TEXT NOT NULL DEFAULT 'EUR',
+  sort_order            INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE categories (
+  ${SYNC_COLUMNS},
+  name        TEXT NOT NULL,
+  color_alpha REAL NOT NULL DEFAULT 0.5,
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  archived    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE transactions (
+  ${SYNC_COLUMNS},
+  account_id   TEXT NOT NULL REFERENCES accounts(id),
+  category_id  TEXT REFERENCES categories(id),
+  merchant     TEXT NOT NULL,
+  -- Signed minor units: negative is money out, positive is money in.
+  amount_cents INTEGER NOT NULL,
+  occurred_at  INTEGER NOT NULL,
+  note         TEXT
+);
+
+CREATE INDEX transactions_occurred_at ON transactions (occurred_at DESC);
+CREATE INDEX transactions_category    ON transactions (category_id);
+
+CREATE TABLE budgets (
+  ${SYNC_COLUMNS},
+  -- 'YYYY-MM'. A NULL category_id is the whole month's budget.
+  month       TEXT NOT NULL,
+  category_id TEXT REFERENCES categories(id),
+  limit_cents INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX budgets_month_category
+  ON budgets (month, IFNULL(category_id, ''));
+
+CREATE TABLE recurring (
+  ${SYNC_COLUMNS},
+  label        TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  next_due_at  INTEGER NOT NULL,
+  account_id   TEXT REFERENCES accounts(id),
+  category_id  TEXT REFERENCES categories(id)
+);
+
+CREATE TABLE settings (
+  ${SYNC_COLUMNS},
+  key   TEXT NOT NULL UNIQUE,
+  value TEXT NOT NULL
+);
+
+-- Local only. Never synced, never claimed by an account.
+CREATE TABLE outbox (
+  seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_name TEXT NOT NULL,
+  row_id     TEXT NOT NULL,
+  op         TEXT NOT NULL,
+  queued_at  INTEGER NOT NULL
+);
+
+CREATE TABLE sync_meta (
+  key   TEXT PRIMARY KEY NOT NULL,
+  value TEXT
+);
+${SYNCED_TABLES.map(outboxTriggers).join('\n')}
+`;
+
+/**
+ * Ordered, append-only. To change the schema, add a step — never edit one that
+ * has shipped, because devices in the field have already run it.
+ */
+export const MIGRATIONS: string[] = [V1];
+
+/** Applies whatever hasn't run yet, tracked in PRAGMA user_version. */
+export async function migrate(db: SQLiteDatabase): Promise<void> {
+  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  const current = row?.user_version ?? 0;
+
+  for (let version = current; version < MIGRATIONS.length; version++) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(MIGRATIONS[version]);
+    });
+    // PRAGMA can't be parameterised, and version is an array index, not input.
+    await db.execAsync(`PRAGMA user_version = ${version + 1}`);
+  }
+}

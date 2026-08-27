@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Eyebrow, HeroCard, T } from '../components/primitives';
-import { addCategories, budget } from '../data';
+import { figure, parseAmountToCents } from '../format';
 import { color, fg, radius, w } from '../theme';
 
 const KEY_ROWS = [
@@ -26,20 +26,26 @@ export function pressKey(current: string, key: string): string {
 export function AddScreen({
   amount,
   onAmountChange,
-  category,
+  categories,
+  categoryId,
   onCategoryChange,
+  leftToSpendCents,
+  daysRemaining,
   onCancel,
   onSubmit,
 }: {
   amount: string;
   onAmountChange: (next: string) => void;
-  category: string;
+  categories: { id: string; name: string }[];
+  categoryId: string | null;
   onCategoryChange: (next: string) => void;
+  leftToSpendCents: number;
+  daysRemaining: number;
   onCancel: () => void;
   onSubmit: () => void;
 }) {
   const display = amount === '' ? '0' : amount;
-  const remaining = budget.leftToSpend - (Number(amount) || 0);
+  const remainingCents = leftToSpendCents - parseAmountToCents(amount);
 
   return (
     <View style={styles.screen}>
@@ -75,19 +81,19 @@ export function AddScreen({
           </T>
         </View>
         <T size={11.5} alpha={0.38}>
-          Leaves {remaining.toLocaleString('en-US')} € for {budget.daysRemaining} days
+          Leaves {figure(remainingCents)} € for {daysRemaining} days
         </T>
       </HeroCard>
 
       <View style={styles.chips}>
-        {addCategories.map((name) => {
-          const on = name === category;
+        {categories.map((cat) => {
+          const on = cat.id === categoryId;
           return (
             <Pressable
-              key={name}
+              key={cat.id}
               accessibilityRole="button"
               accessibilityState={{ selected: on }}
-              onPress={() => onCategoryChange(name)}
+              onPress={() => onCategoryChange(cat.id)}
               style={[styles.chip, on ? styles.chipOn : styles.chipOff]}
             >
               <T
@@ -95,7 +101,7 @@ export function AddScreen({
                 weight={on ? 'medium' : 'regular'}
                 style={on ? { color: color.ink } : { color: fg(0.6) }}
               >
-                {name}
+                {cat.name}
               </T>
             </Pressable>
           );

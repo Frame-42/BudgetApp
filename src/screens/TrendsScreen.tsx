@@ -2,11 +2,19 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { LegendRule, PaceChart, SplitDonut } from '../components/Charts';
 import { Amount, Card, Divider, Eyebrow, HeroCard, StatusDot, T } from '../components/primitives';
-import { trends } from '../data';
+import type { TrendsData } from '../queries/trends';
+import { euroLabel, figure } from '../format';
 import { color, radius, w } from '../theme';
 
+/** The plot area the design's month bars are drawn against. */
+const BAR_PLOT_HEIGHT = 78;
+
 /** 04 — Trends: the six-month shape. */
-export function TrendsScreen() {
+export function TrendsScreen({ data }: { data: TrendsData }) {
+  const thisMonth = data.months[data.months.length - 1];
+  const lastMonth = data.months[data.months.length - 2];
+  const leader = data.split[0];
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -27,23 +35,29 @@ export function TrendsScreen() {
         <View style={styles.heroTop}>
           <View style={{ gap: 8 }}>
             <Eyebrow alpha={0.36}>Monthly average</Eyebrow>
-            <Amount value={trends.monthlyAverage} size={40} symbolSize={20} />
+            <Amount value={figure(data.monthlyAverageCents)} size={40} symbolSize={20} />
           </View>
-          <T size={11.5} style={{ color: color.accentBright, paddingBottom: 5 }}>
-            {trends.delta}
-          </T>
+          {data.deltaPercent !== null ? (
+            <T size={11.5} style={{ color: color.accentBright, paddingBottom: 5 }}>
+              {data.deltaPercent <= 0 ? '−' : '+'}
+              {Math.abs(data.deltaPercent)}% vs earlier
+            </T>
+          ) : null}
         </View>
         <View style={styles.monthRow}>
-          {trends.months.map((m) => (
-            <View key={m.label} style={styles.monthCol}>
+          {data.months.map((month) => (
+            <View key={month.key} style={styles.monthCol}>
               <View
                 style={[
                   styles.monthBar,
-                  { height: m.height, backgroundColor: m.active ? color.mark : w(0.12) },
+                  {
+                    height: Math.max(6, month.fraction * BAR_PLOT_HEIGHT),
+                    backgroundColor: month.active ? color.mark : w(0.12),
+                  },
                 ]}
               />
-              <T weight="mono" size={10} alpha={m.active ? 0.62 : 0.3}>
-                {m.label}
+              <T weight="mono" size={10} alpha={month.active ? 0.62 : 0.3}>
+                {month.label}
               </T>
             </View>
           ))}
@@ -57,44 +71,48 @@ export function TrendsScreen() {
             <View style={styles.legendRow}>
               <LegendRule />
               <T size={10.5} alpha={0.72}>
-                August
+                {thisMonth?.label ?? ''}
               </T>
             </View>
             <View style={styles.legendRow}>
               <LegendRule dashed />
               <T size={10.5} alpha={0.42}>
-                July
+                {lastMonth?.label ?? ''}
               </T>
             </View>
           </View>
         </View>
-        <PaceChart />
+        <PaceChart current={data.pace.current} previous={data.pace.previous} />
         <Divider />
         <T size={12.5} lineHeight={17.5} alpha={0.7}>
-          {trends.paceNote}
+          {data.paceDeltaCents >= 0
+            ? `${euroLabel(data.paceDeltaCents)} lighter than the same day last month.`
+            : `${euroLabel(-data.paceDeltaCents)} heavier than the same day last month.`}
         </T>
       </Card>
 
       <Card style={styles.splitCard}>
         <Eyebrow tracking={0.14}>Where it goes</Eyebrow>
         <View style={styles.splitRow}>
-          <SplitDonut segments={trends.split}>
+          <SplitDonut shares={data.split}>
             <T weight="light" size={19} lineHeight={19} tracking={-0.03}>
-              {trends.monthlyAverage} €
+              {figure(data.monthlyAverageCents)} €
             </T>
             <Eyebrow size={8.5} alpha={0.32} tracking={0.12}>
               avg / mo
             </Eyebrow>
           </SplitDonut>
           <View style={styles.legend}>
-            {trends.split.map((s) => (
-              <View key={s.name} style={styles.legendItem}>
-                <View style={[styles.swatch, { backgroundColor: `rgba(233,235,242,${s.alpha})` }]} />
+            {data.split.map((share) => (
+              <View key={share.name} style={styles.legendItem}>
+                <View
+                  style={[styles.swatch, { backgroundColor: `rgba(233,235,242,${share.alpha})` }]}
+                />
                 <T size={12.5} alpha={0.82} style={{ flex: 1 }}>
-                  {s.name}
+                  {share.name}
                 </T>
                 <T weight="mono" size={11} alpha={0.42}>
-                  {s.percent}
+                  {share.percent}%
                 </T>
               </View>
             ))}
@@ -102,12 +120,14 @@ export function TrendsScreen() {
         </View>
       </Card>
 
-      <Card quiet style={styles.insight}>
-        <StatusDot />
-        <T size={12.5} lineHeight={17.5} alpha={0.72} style={{ flex: 1 }}>
-          {trends.insight}
-        </T>
-      </Card>
+      {leader ? (
+        <Card quiet style={styles.insight}>
+          <StatusDot />
+          <T size={12.5} lineHeight={17.5} alpha={0.72} style={{ flex: 1 }}>
+            {leader.name} takes {leader.percent}% of everything you spend.
+          </T>
+        </Card>
+      ) : null}
     </View>
   );
 }
