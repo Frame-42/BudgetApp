@@ -149,7 +149,6 @@ export function SpendItemSheet({
             >
               {amount === '' ? '0' : amount}
             </T>
-            <View style={styles.caret} />
             <T weight="light" size={21} lineHeight={21} alpha={0.36}>
               €
             </T>
@@ -220,13 +219,6 @@ const styles = StyleSheet.create({
   actionPressed: { backgroundColor: w(0.12) },
   cancel: { height: 40, alignItems: 'center', justifyContent: 'center' },
   amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, justifyContent: 'center' },
-  caret: {
-    width: 1.5,
-    height: 38,
-    borderRadius: 2,
-    backgroundColor: color.accentBright,
-    alignSelf: 'center',
-  },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   back: {
     height: 50,

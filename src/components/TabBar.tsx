@@ -8,13 +8,15 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { color, fg, font, radius, track, w } from '../theme';
 import { AddIcon, HomeIcon, SpendIcon, TrendsIcon, YouIcon } from './Icons';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+/** Intrinsic height of the rail pill (padding + icon height), for clearing scroll content. */
+export const TAB_BAR_HEIGHT = 46;
 
 export const TABS = [
   { key: 'home', label: 'Home', Icon: HomeIcon },
@@ -48,10 +50,9 @@ export function TabBar({
   };
 
   return (
-    <BlurView
-      intensity={30}
-      tint="dark"
-      style={[styles.bar, { paddingBottom: Math.max(bottomInset, 12) + 12 }]}
+    <View
+      pointerEvents="box-none"
+      style={[styles.bar, { paddingBottom: Math.max(bottomInset, 12) }]}
     >
       <View style={styles.rail}>
         {TABS.map(({ key, label, Icon }, i) => {
@@ -71,16 +72,19 @@ export function TabBar({
           );
         })}
       </View>
-    </BlurView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   bar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     paddingTop: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
-    backgroundColor: 'rgba(11,12,16,0.72)',
   },
   rail: {
     flexDirection: 'row',
@@ -88,9 +92,9 @@ const styles = StyleSheet.create({
     gap: 2,
     padding: 4,
     borderRadius: radius.pill,
-    backgroundColor: w(0.055),
+    backgroundColor: w(0.1),
     borderWidth: 1,
-    borderColor: w(0.07),
+    borderColor: w(0.12),
   },
   pill: {
     flexDirection: 'row',

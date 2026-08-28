@@ -12,7 +12,7 @@ import {
 } from '@expo-google-fonts/geist';
 import { GeistMono_400Regular, GeistMono_500Medium } from '@expo-google-fonts/geist-mono';
 
-import { TabBar } from './src/components/TabBar';
+import { TabBar, TAB_BAR_HEIGHT } from './src/components/TabBar';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { SpendScreen } from './src/screens/SpendScreen';
 import { AddScreen } from './src/screens/AddScreen';
@@ -98,7 +98,13 @@ function Phone() {
       <StatusBar style="light" />
       <ScrollView
         style={styles.fill}
-        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 24) + 6 }]}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: Math.max(insets.top, 24) + 6,
+            paddingBottom: Math.max(insets.bottom, 12) + TAB_BAR_HEIGHT + 28,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {screens[tab]}
@@ -131,5 +137,5 @@ export default function App() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  content: { paddingHorizontal: GUTTER, paddingBottom: 16 },
+  content: { paddingHorizontal: GUTTER },
 });

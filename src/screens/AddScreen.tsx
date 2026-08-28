@@ -58,8 +58,6 @@ export function AddScreen({
           >
             {display}
           </T>
-          {/* The caret sits against the last digit; the symbol trails the whole figure. */}
-          <View style={styles.caret} />
           <T weight="light" size={24} lineHeight={24} alpha={0.36}>
             €
           </T>
@@ -98,13 +96,6 @@ const styles = StyleSheet.create({
   },
   hero: { paddingVertical: 28, paddingHorizontal: 24, gap: 14, alignItems: 'center' },
   amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  caret: {
-    width: 1.5,
-    height: 44,
-    borderRadius: 2,
-    backgroundColor: color.accentBright,
-    alignSelf: 'center',
-  },
   submit: {
     height: 50,
     borderRadius: radius.pill,
