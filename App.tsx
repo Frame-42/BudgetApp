@@ -39,7 +39,7 @@ function Background({ children }: { children: React.ReactNode }) {
 
 function Phone() {
   const insets = useSafeAreaInsets();
-  const { data, addExpense, reset } = useBudget();
+  const { data, addExpense, updateExpense, removeExpense, reset } = useBudget();
   const [tab, setTab] = useState(0);
 
   /* Entry state lives above the screens so it survives a trip to another tab. */
@@ -66,7 +66,14 @@ function Phone() {
 
   const screens = [
     <HomeScreen key="home" data={data.home} name={data.you.name} />,
-    <SpendScreen key="spend" data={data.spend} month={data.home.month} />,
+    <SpendScreen
+      key="spend"
+      data={data.spend}
+      month={data.home.month}
+      categories={data.add.categories}
+      onSave={updateExpense}
+      onDelete={removeExpense}
+    />,
     <AddScreen
       key="add"
       amount={amount}

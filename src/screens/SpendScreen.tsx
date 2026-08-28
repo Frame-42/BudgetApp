@@ -1,13 +1,34 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Amount, Eyebrow, HeroCard, T } from '../components/primitives';
-import type { SpendData } from '../queries/spend';
+import { SpendItemSheet } from '../components/SpendItemSheet';
+import { tapSelect } from '../haptics';
+import type { SpendData, SpendItem } from '../queries/spend';
 import { amountLabel, figure } from '../format';
 import { color, radius, w } from '../theme';
 
 /** 02 — Spend: where it went. */
-export function SpendScreen({ data, month }: { data: SpendData; month: string }) {
+export function SpendScreen({
+  data,
+  month,
+  categories,
+  onSave,
+  onDelete,
+}: {
+  data: SpendData;
+  month: string;
+  categories: { id: string; name: string }[];
+  onSave: (input: {
+    id: string;
+    amountCents: number;
+    categoryId: string | null;
+    income: boolean;
+  }) => void;
+  onDelete: (id: string) => void;
+}) {
   const lastGroup = data.groups[data.groups.length - 1];
+  /* Which row is being acted on: transient overlay state, so it stays local. */
+  const [selected, setSelected] = useState<SpendItem | null>(null);
 
   return (
     <View style={styles.screen}>
@@ -47,8 +68,23 @@ export function SpendScreen({ data, month }: { data: SpendData; month: string })
             {group.items.map((item, i) => {
               /* Every row is ruled off except the very last one on the screen. */
               const last = group === lastGroup && i === group.items.length - 1;
+              const open = () => setSelected(item);
               return (
-                <View key={item.id} style={[styles.row, !last && styles.rowBorder]}>
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.merchant}, ${amountLabel(item.amountCents, { signed: item.income })}`}
+                  accessibilityHint="Opens edit and delete"
+                  onPress={() => {
+                    tapSelect();
+                    open();
+                  }}
+                  style={({ pressed }) => [
+                    styles.row,
+                    !last && styles.rowBorder,
+                    pressed && styles.rowPressed,
+                  ]}
+                >
                   <View style={{ gap: 4 }}>
                     <T size={14} style={{ color: color.textStrong }}>
                       {item.merchant}
@@ -65,12 +101,20 @@ export function SpendScreen({ data, month }: { data: SpendData; month: string })
                   >
                     {amountLabel(item.amountCents, { signed: item.income })}
                   </T>
-                </View>
+                </Pressable>
               );
             })}
           </View>
         </View>
       ))}
+
+      <SpendItemSheet
+        item={selected}
+        categories={categories}
+        onClose={() => setSelected(null)}
+        onSave={onSave}
+        onDelete={onDelete}
+      />
     </View>
   );
 }
@@ -108,6 +152,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 13,
+    /* Pulled back out again so the press wash can bleed past the text. */
+    paddingHorizontal: 8,
+    marginHorizontal: -8,
   },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: color.hairline },
+  rowPressed: { backgroundColor: w(0.04), borderRadius: radius.key },
 });

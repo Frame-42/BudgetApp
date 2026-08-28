@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import * as SQLite from 'expo-sqlite';
 import { getDb, resetDatabase } from '../db/client';
-import { createTransaction } from '../repo/transactions';
+import { createTransaction, deleteTransaction, editTransaction } from '../repo/transactions';
 import { loadHome, type HomeData } from '../queries/home';
 import { loadSpend, type SpendData } from '../queries/spend';
 import { loadTrends, type TrendsData } from '../queries/trends';
@@ -19,6 +19,13 @@ export type Snapshot = {
 type BudgetContextValue = {
   data: Snapshot | null;
   addExpense: (input: { amountCents: number; categoryId: string | null }) => Promise<void>;
+  updateExpense: (input: {
+    id: string;
+    amountCents: number;
+    categoryId: string | null;
+    income: boolean;
+  }) => Promise<void>;
+  removeExpense: (id: string) => Promise<void>;
   reset: () => Promise<void>;
 };
 
@@ -78,13 +85,34 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const updateExpense = useCallback<BudgetContextValue['updateExpense']>(
+    async ({ id, amountCents, categoryId, income }) => {
+      if (amountCents <= 0) return;
+      const db = await getDb();
+      await editTransaction(db, id, {
+        // The sheet edits a magnitude; the row's own direction decides the sign.
+        amount_cents: income ? amountCents : -amountCents,
+        category_id: categoryId,
+      });
+    },
+    [],
+  );
+
+  /** Soft delete — the update trigger turns it into an outbox 'delete' for sync. */
+  const removeExpense = useCallback<BudgetContextValue['removeExpense']>(async (id) => {
+    const db = await getDb();
+    await deleteTransaction(db, id);
+  }, []);
+
   const reset = useCallback(async () => {
     await resetDatabase();
     await load();
   }, [load]);
 
   return (
-    <BudgetContext.Provider value={{ data, addExpense, reset }}>{children}</BudgetContext.Provider>
+    <BudgetContext.Provider value={{ data, addExpense, updateExpense, removeExpense, reset }}>
+      {children}
+    </BudgetContext.Provider>
   );
 }
 
