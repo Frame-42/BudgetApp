@@ -28,3 +28,12 @@ export function parseAmountToCents(input: string): number {
   const value = Number.parseFloat(input);
   return Number.isFinite(value) ? Math.round(value * 100) : 0;
 }
+
+/**
+ * The inverse, for seeding the keypad when editing an existing row. Whole euros
+ * lose the ".00" so the keypad reads the way it would if you had just typed it.
+ */
+export function centsToAmountInput(cents: number): string {
+  const abs = Math.abs(cents);
+  return abs % 100 === 0 ? String(abs / 100) : (abs / 100).toFixed(2);
+}

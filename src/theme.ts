@@ -43,6 +43,12 @@ export const color = {
   tileQuiet: w(0.03),
   tileQuietBorder: w(0.055),
 
+  /**
+   * Sheets sit over blurred content, so they are opaque graphite rather than a
+   * white overlay — an alpha surface here would let the list read through.
+   */
+  sheet: '#171921',
+
   hairline: w(0.055),
   track: w(0.08),
 } as const;

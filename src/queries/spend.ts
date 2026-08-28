@@ -5,6 +5,8 @@ export type SpendItem = {
   id: string;
   merchant: string;
   category: string;
+  /** Preselects the chip when the row is edited; null on income. */
+  categoryId: string | null;
   amountCents: number;
   income: boolean;
 };
@@ -26,9 +28,10 @@ export async function loadSpend(db: SQLiteDatabase, at: number = Date.now()): Pr
     merchant: string;
     amount_cents: number;
     occurred_at: number;
+    category_id: string | null;
     category: string | null;
   }>(
-    `SELECT t.id, t.merchant, t.amount_cents, t.occurred_at, c.name AS category
+    `SELECT t.id, t.merchant, t.amount_cents, t.occurred_at, t.category_id, c.name AS category
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
       WHERE t.deleted_at IS NULL AND t.occurred_at >= ? AND t.occurred_at < ?
@@ -51,6 +54,7 @@ export async function loadSpend(db: SQLiteDatabase, at: number = Date.now()): Pr
       id: row.id,
       merchant: row.merchant,
       category: (row.category ?? 'Income').toUpperCase(),
+      categoryId: row.category_id,
       amountCents: row.amount_cents,
       income: row.amount_cents > 0,
     });
