@@ -85,40 +85,44 @@ export function TrendsScreen({ data }: { data: TrendsData }) {
         <PaceChart current={data.pace.current} previous={data.pace.previous} />
         <Divider />
         <T size={12.5} lineHeight={17.5} alpha={0.7}>
-          {data.paceDeltaCents >= 0
-            ? `${euroLabel(data.paceDeltaCents)} lighter than the same day last month.`
-            : `${euroLabel(-data.paceDeltaCents)} heavier than the same day last month.`}
+          {data.paceDeltaCents === 0
+            ? 'Nothing spent yet this month.'
+            : data.paceDeltaCents > 0
+              ? `${euroLabel(data.paceDeltaCents)} lighter than the same day last month.`
+              : `${euroLabel(-data.paceDeltaCents)} heavier than the same day last month.`}
         </T>
       </Card>
 
-      <Card style={styles.splitCard}>
-        <Eyebrow tracking={0.14}>Where it goes</Eyebrow>
-        <View style={styles.splitRow}>
-          <SplitDonut shares={data.split}>
-            <T weight="light" size={19} lineHeight={19} tracking={-0.03}>
-              {figure(data.monthlyAverageCents)} €
-            </T>
-            <Eyebrow size={8.5} alpha={0.32} tracking={0.12}>
-              avg / mo
-            </Eyebrow>
-          </SplitDonut>
-          <View style={styles.legend}>
-            {data.split.map((share) => (
-              <View key={share.name} style={styles.legendItem}>
-                <View
-                  style={[styles.swatch, { backgroundColor: `rgba(233,235,242,${share.alpha})` }]}
-                />
-                <T size={12.5} alpha={0.82} style={{ flex: 1 }}>
-                  {share.name}
-                </T>
-                <T weight="mono" size={11} alpha={0.42}>
-                  {share.percent}%
-                </T>
-              </View>
-            ))}
+      {data.split.length ? (
+        <Card style={styles.splitCard}>
+          <Eyebrow tracking={0.14}>Where it goes</Eyebrow>
+          <View style={styles.splitRow}>
+            <SplitDonut shares={data.split}>
+              <T weight="light" size={19} lineHeight={19} tracking={-0.03}>
+                {figure(data.monthlyAverageCents)} €
+              </T>
+              <Eyebrow size={8.5} alpha={0.32} tracking={0.12}>
+                avg / mo
+              </Eyebrow>
+            </SplitDonut>
+            <View style={styles.legend}>
+              {data.split.map((share) => (
+                <View key={share.name} style={styles.legendItem}>
+                  <View
+                    style={[styles.swatch, { backgroundColor: `rgba(233,235,242,${share.alpha})` }]}
+                  />
+                  <T size={12.5} alpha={0.82} style={{ flex: 1 }}>
+                    {share.name}
+                  </T>
+                  <T weight="mono" size={11} alpha={0.42}>
+                    {share.percent}%
+                  </T>
+                </View>
+              ))}
+            </View>
           </View>
-        </View>
-      </Card>
+        </Card>
+      ) : null}
 
       {leader ? (
         <Card quiet style={styles.insight}>

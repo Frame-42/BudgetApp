@@ -54,9 +54,11 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
         <View style={styles.statusRow}>
           <StatusDot />
           <T size={13} lineHeight={17.5} alpha={0.78} style={{ flex: 1 }}>
-            {ahead >= 0
-              ? `On track — about ${euroLabel(ahead)} ahead of pace.`
-              : `Over pace — about ${euroLabel(-ahead)} beyond the run rate.`}
+            {data.monthBudgetCents === 0
+              ? 'No budget for this month yet.'
+              : ahead >= 0
+                ? `On track — about ${euroLabel(ahead)} ahead of pace.`
+                : `Over pace — about ${euroLabel(-ahead)} beyond the run rate.`}
           </T>
         </View>
       </HeroCard>
@@ -106,20 +108,26 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
                   {cat.name}
                 </T>
                 <T weight="mono" size={12} alpha={0.44}>
-                  {figure(cat.spentCents)} / {figure(cat.limitCents)}
+                  {cat.limitCents > 0
+                    ? `${figure(cat.spentCents)} / ${figure(cat.limitCents)}`
+                    : `${figure(cat.spentCents)} €`}
                 </T>
               </View>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.trackFill,
-                    {
-                      width: `${cat.fill * 100}%`,
-                      backgroundColor: `rgba(233,235,242,${cat.alpha})`,
-                    },
-                  ]}
-                />
-              </View>
+              {/* With no limit set there is nothing to fill against, and an empty
+                  track reads as a limit of zero rather than as no limit at all. */}
+              {cat.limitCents > 0 ? (
+                <View style={styles.track}>
+                  <View
+                    style={[
+                      styles.trackFill,
+                      {
+                        width: `${cat.fill * 100}%`,
+                        backgroundColor: `rgba(233,235,242,${cat.alpha})`,
+                      },
+                    ]}
+                  />
+                </View>
+              ) : null}
             </View>
           ))}
         </View>

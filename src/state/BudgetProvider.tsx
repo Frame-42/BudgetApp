@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import * as SQLite from 'expo-sqlite';
-import { getDb, resetDatabase } from '../db/client';
+import { getDb, getMeta, resetDatabase, setMeta } from '../db/client';
+import { loadDemoData } from '../db/demo';
+import { runOnboarding, type OnboardingInput } from '../db/onboarding';
 import { createTransaction, deleteTransaction, editTransaction } from '../repo/transactions';
 import { sanitizeMerchant } from '../format';
 import { loadHome, type HomeData } from '../queries/home';
@@ -9,12 +11,16 @@ import { loadTrends, type TrendsData } from '../queries/trends';
 import { loadYou, type YouData } from '../queries/you';
 import { loadAddOptions, type AddOptions } from '../queries/add';
 
+/** Set once the first run finishes. Local-only, so it never syncs away. */
+const ONBOARDED_KEY = 'onboarded_at';
+
 export type Snapshot = {
   home: HomeData;
   spend: SpendData;
   trends: TrendsData;
   you: YouData;
   add: AddOptions;
+  onboarded: boolean;
 };
 
 type BudgetContextValue = {
@@ -32,7 +38,10 @@ type BudgetContextValue = {
     merchant: string;
   }) => Promise<void>;
   removeExpense: (id: string) => Promise<void>;
+  completeOnboarding: (input: OnboardingInput) => Promise<void>;
   reset: () => Promise<void>;
+  /** Development only: throw everything away and land on a populated month. */
+  loadSampleData: () => Promise<void>;
 };
 
 const BudgetContext = createContext<BudgetContextValue | null>(null);
@@ -49,14 +58,17 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   const load = useCallback(async () => {
     const db = await getDb();
-    const [home, spend, trends, you, add] = await Promise.all([
+    const [home, spend, trends, you, add, onboardedAt] = await Promise.all([
       loadHome(db),
       loadSpend(db),
       loadTrends(db),
       loadYou(db),
       loadAddOptions(db),
+      getMeta(db, ONBOARDED_KEY),
     ]);
-    setData({ home, spend, trends, you, add });
+    // Resolving the flag alongside the rest keeps `data` null until the gate can
+    // be decided, so Home never flashes before onboarding mounts.
+    setData({ home, spend, trends, you, add, onboarded: onboardedAt !== null });
   }, []);
 
   useEffect(() => {
@@ -110,13 +122,44 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     await deleteTransaction(db, id);
   }, []);
 
+  const completeOnboarding = useCallback<BudgetContextValue['completeOnboarding']>(
+    async (input) => {
+      const db = await getDb();
+      await runOnboarding(db, input);
+      // Set after the commit, so a crash mid-write leaves the gate closed and the
+      // user repeats the flow rather than landing in a half-built app.
+      await setMeta(db, ONBOARDED_KEY, String(Date.now()));
+      await load();
+    },
+    [load],
+  );
+
+  /** Resetting first means this never has to reason about existing real data. */
+  const loadSampleData = useCallback(async () => {
+    await resetDatabase();
+    const db = await getDb();
+    await loadDemoData(db);
+    await setMeta(db, ONBOARDED_KEY, String(Date.now()));
+    await load();
+  }, [load]);
+
   const reset = useCallback(async () => {
     await resetDatabase();
     await load();
   }, [load]);
 
   return (
-    <BudgetContext.Provider value={{ data, addExpense, updateExpense, removeExpense, reset }}>
+    <BudgetContext.Provider
+      value={{
+        data,
+        addExpense,
+        updateExpense,
+        removeExpense,
+        completeOnboarding,
+        reset,
+        loadSampleData,
+      }}
+    >
       {children}
     </BudgetContext.Provider>
   );

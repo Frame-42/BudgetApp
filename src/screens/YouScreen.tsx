@@ -6,10 +6,26 @@ import type { YouData } from '../queries/you';
 import { amountLabel, figure } from '../format';
 import { color, radius, w } from '../theme';
 
+/** A settings row; `onPress` is what makes it tappable, since more than one
+ *  development row now shares the same DEV value. */
+type Row = { name: string; value: string; onPress?: () => void };
+
 /** 05 — You: accounts and settings. */
-export function YouScreen({ data, onReset }: { data: YouData; onReset: () => void }) {
-  const rows = __DEV__
-    ? [...data.settings, { name: 'Reset & reseed', value: 'DEV' }]
+export function YouScreen({
+  data,
+  onReset,
+  onLoadSample,
+}: {
+  data: YouData;
+  onReset: () => void;
+  onLoadSample: () => void;
+}) {
+  const rows: Row[] = __DEV__
+    ? [
+        ...data.settings,
+        { name: 'Reset to first run', value: 'DEV', onPress: onReset },
+        { name: 'Load sample data', value: 'DEV', onPress: onLoadSample },
+      ]
     : data.settings;
 
   return (
@@ -41,9 +57,12 @@ export function YouScreen({ data, onReset }: { data: YouData; onReset: () => voi
             <Eyebrow alpha={0.36}>Net worth</Eyebrow>
             <Amount value={figure(data.netWorthCents)} size={40} symbolSize={20} />
           </View>
-          <T size={11.5} style={{ color: color.accentBright, paddingBottom: 5 }}>
-            {amountLabel(data.monthDeltaCents, { signed: true })} this month
-          </T>
+          {/* The accent means income; at zero there is nothing to colour. */}
+          {data.monthDeltaCents !== 0 ? (
+            <T size={11.5} style={{ color: color.accentBright, paddingBottom: 5 }}>
+              {amountLabel(data.monthDeltaCents, { signed: true })} this month
+            </T>
+          ) : null}
         </View>
         <Divider />
         <View style={{ gap: 13 }}>
@@ -63,7 +82,6 @@ export function YouScreen({ data, onReset }: { data: YouData; onReset: () => voi
 
       <Card style={styles.settingsCard}>
         {rows.map((setting, i) => {
-          const isReset = setting.value === 'DEV';
           const row = (
             <View
               style={[styles.settingRow, i < rows.length - 1 && styles.settingBorder]}
@@ -76,8 +94,8 @@ export function YouScreen({ data, onReset }: { data: YouData; onReset: () => voi
               </T>
             </View>
           );
-          return isReset ? (
-            <Pressable key={setting.name} onPress={onReset} accessibilityRole="button">
+          return setting.onPress ? (
+            <Pressable key={setting.name} onPress={setting.onPress} accessibilityRole="button">
               {row}
             </Pressable>
           ) : (

@@ -38,8 +38,8 @@ it, and prefer `npx expo install` over `npm install` so versions match the SDK.
 |---|---|
 | `src/theme.ts` | Design tokens — surfaces, the two accent tints, radii, fonts |
 | `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx` |
-| `src/screens/` | One per tab; presentational, fed by props |
-| `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `types.ts`, `ids.ts` |
+| `src/screens/` | One per tab, plus `OnboardingScreen`; presentational, fed by props |
+| `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
 | `src/repo/` | Typed CRUD per table — the only place writes happen |
 | `src/queries/` | Derived figures per screen; pure, rows in / numbers out |
 | `src/state/BudgetProvider.tsx` | Opens the DB, recomputes on every change |
@@ -47,6 +47,21 @@ it, and prefer `npx expo install` over `npm install` so versions match the SDK.
 | `src/format.ts`, `src/time.ts` | Money and date formatting |
 
 ## Rules that are easy to get wrong
+
+**The first run is gated, and the seed is not demo data.** `seedIfEmpty` plants
+only the seven categories and one Checking account — the account is what makes its
+`COUNT(*) FROM accounts` guard work, so never reduce it to categories alone.
+Everything else comes from onboarding (`src/db/onboarding.ts`), which writes name,
+employment, the monthly budget and the weekly-recap preference in one transaction.
+It is a port of the `Onboarding Phone.dc.html` canvas — four steps, and the canvas
+never asks for a balance, so Checking keeps its opening figure of zero. The gate is `sync_meta.onboarded_at`
+— local-only and never synced, so `resetDatabase()` clears it and a second device
+onboards again. `src/db/demo.ts` holds the months of history the charts need; it is
+reachable only from the `__DEV__` rows on the You screen.
+
+**Deselecting a category archives it.** `archiveCategory`, never a delete —
+`listCategories` filters `archived = 0` so it leaves the chips, while `queries/trends.ts`
+joins without that filter so old spending keeps its label.
 
 **Money is integer cents, everywhere.** Never floats, never a formatted string in
 the database. Format only via `src/format.ts`. The euro symbol *trails* the
@@ -95,6 +110,17 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 ```
 
 Until that is run, there is no touch injection. What does work:
+
+**`/reload` is unreliable, and Fast Refresh is not a substitute.** A source edit
+triggers Fast Refresh, which *preserves module state* — including the memoized
+`getDb()` handle. Anything that touches the database on disk (deleting `budget.db`
+to force a first run, checking that `seedIfEmpty` reran) needs a real cold start, or
+the app keeps using its already-open connection and nothing appears to change:
+
+```bash
+xcrun simctl terminate booted host.exp.Exponent
+xcrun simctl openurl booted "exp://<lan-ip>:8081"   # lan-ip is in the expo start output
+```
 
 ```bash
 # screenshot the booted simulator
