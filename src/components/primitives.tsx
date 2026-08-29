@@ -1,5 +1,15 @@
 import React from 'react';
-import { Platform, StyleSheet, Text, TextProps, View, ViewProps, ViewStyle } from 'react-native';
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  TextProps,
+  View,
+  ViewProps,
+  ViewStyle,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { color, fg, font, heroAngle, radius, track } from '../theme';
 
@@ -79,6 +89,50 @@ export function T({
     >
       {children}
     </Text>
+  );
+}
+
+/**
+ * Geist body copy, editable. Mirrors `T`'s font resolution exactly so typed
+ * text sits flush with the app's display text — this is the app's only
+ * keyboard text entry, so it's the one place that convention has to hold.
+ */
+export function TextField({
+  size = 12.5,
+  alpha = 1,
+  weight = 'regular',
+  tracking = 0,
+  lineHeight,
+  style,
+  ...rest
+}: TextInputProps & {
+  size?: number;
+  alpha?: number;
+  weight?: 'light' | 'regular' | 'medium' | 'semibold' | 'mono' | 'monoMedium';
+  tracking?: number;
+  lineHeight?: number;
+}) {
+  return (
+    <TextInput
+      placeholderTextColor={fg(0.3)}
+      selectionColor={color.accentBright}
+      cursorColor={color.accentBright}
+      keyboardAppearance="dark"
+      underlineColorAndroid="transparent"
+      {...rest}
+      style={[
+        noPad,
+        {
+          fontFamily: font[weight],
+          fontSize: size,
+          lineHeight: Math.max(lineHeight ?? size * 1.3, size * MIN_LEADING),
+          letterSpacing: track(tracking, size),
+          color: alpha === 1 ? color.text : fg(alpha),
+          padding: 0,
+        },
+        style,
+      ]}
+    />
   );
 }
 

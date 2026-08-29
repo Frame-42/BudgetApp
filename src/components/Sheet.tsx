@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GUTTER, color, radius, w } from '../theme';
@@ -78,64 +78,66 @@ export function Sheet({
       statusBarTranslucent
       onRequestClose={close}
     >
-      <View style={styles.overlay}>
-        <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            style={styles.fill}
-            onPress={close}
-          />
-        </BlurView>
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.overlay}>
+          <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              style={styles.fill}
+              onPress={close}
+            />
+          </BlurView>
 
-        <Animated.View
-          onTouchStart={(e) => {
-            startY.current = e.nativeEvent.pageY;
-            lastY.current = e.nativeEvent.pageY;
-            startT.current = Date.now();
-          }}
-          onTouchMove={(e) => {
-            /* Only onTouchMove is known to arrive here; if start never did,
-               seed the origin from the first move rather than measuring from
-               whatever the last gesture left behind. */
-            if (startT.current === 0) {
+          <Animated.View
+            onTouchStart={(e) => {
               startY.current = e.nativeEvent.pageY;
+              lastY.current = e.nativeEvent.pageY;
               startT.current = Date.now();
-            }
-            lastY.current = e.nativeEvent.pageY;
-            const dy = lastY.current - startY.current;
-            if (!isDragging.current && dy > DRAG_SLOP) {
-              isDragging.current = true;
-              setDragging(true);
-            }
-            if (isDragging.current) translateY.setValue(Math.max(0, dy));
-          }}
-          onTouchEnd={endDrag}
-          onTouchCancel={endDrag}
-          onLayout={(e) => {
-            height.current = e.nativeEvent.layout.height;
-          }}
-          style={[
-            styles.card,
-            { paddingBottom: Math.max(insets.bottom, 14) + 10, transform: [{ translateY }] },
-          ]}
-        >
-          <View
-            accessibilityRole="adjustable"
-            accessibilityLabel="Drag down to close"
-            accessibilityActions={[{ name: 'decrement', label: 'Close' }]}
-            onAccessibilityAction={close}
-            style={styles.grabber}
-          />
-          {/*
-            Not a ScrollView: its pan recogniser is native and would take the
-            drag before this view saw it. The content is bounded, keypad and all.
-          */}
-          <View pointerEvents={dragging ? 'none' : 'auto'} style={styles.body}>
-            {children}
-          </View>
-        </Animated.View>
-      </View>
+            }}
+            onTouchMove={(e) => {
+              /* Only onTouchMove is known to arrive here; if start never did,
+                 seed the origin from the first move rather than measuring from
+                 whatever the last gesture left behind. */
+              if (startT.current === 0) {
+                startY.current = e.nativeEvent.pageY;
+                startT.current = Date.now();
+              }
+              lastY.current = e.nativeEvent.pageY;
+              const dy = lastY.current - startY.current;
+              if (!isDragging.current && dy > DRAG_SLOP) {
+                isDragging.current = true;
+                setDragging(true);
+              }
+              if (isDragging.current) translateY.setValue(Math.max(0, dy));
+            }}
+            onTouchEnd={endDrag}
+            onTouchCancel={endDrag}
+            onLayout={(e) => {
+              height.current = e.nativeEvent.layout.height;
+            }}
+            style={[
+              styles.card,
+              { paddingBottom: Math.max(insets.bottom, 14) + 10, transform: [{ translateY }] },
+            ]}
+          >
+            <View
+              accessibilityRole="adjustable"
+              accessibilityLabel="Drag down to close"
+              accessibilityActions={[{ name: 'decrement', label: 'Close' }]}
+              onAccessibilityAction={close}
+              style={styles.grabber}
+            />
+            {/*
+              Not a ScrollView: its pan recogniser is native and would take the
+              drag before this view saw it. The content is bounded, keypad and all.
+            */}
+            <View pointerEvents={dragging ? 'none' : 'auto'} style={styles.body}>
+              {children}
+            </View>
+          </Animated.View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

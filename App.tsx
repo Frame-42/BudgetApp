@@ -45,6 +45,7 @@ function Phone() {
   /* Entry state lives above the screens so it survives a trip to another tab. */
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [merchant, setMerchant] = useState('');
 
   useEffect(() => {
     if (!categoryId && data) setCategoryId(data.add.categories[0]?.id ?? null);
@@ -59,8 +60,9 @@ function Phone() {
   }
 
   const submit = async () => {
-    await addExpense({ amountCents: parseAmountToCents(amount), categoryId });
+    await addExpense({ amountCents: parseAmountToCents(amount), categoryId, merchant });
     setAmount('');
+    setMerchant('');
     setTab(1);
   };
 
@@ -78,15 +80,13 @@ function Phone() {
       key="add"
       amount={amount}
       onAmountChange={setAmount}
+      merchant={merchant}
+      onMerchantChange={setMerchant}
       categories={data.add.categories}
       categoryId={categoryId}
       onCategoryChange={setCategoryId}
       leftToSpendCents={data.home.leftToSpendCents}
       daysRemaining={data.home.daysRemaining}
-      onCancel={() => {
-        setAmount('');
-        setTab(0);
-      }}
       onSubmit={submit}
     />,
     <TrendsScreen key="trends" data={data.trends} />,
@@ -106,6 +106,7 @@ function Phone() {
           },
         ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {screens[tab]}
       </ScrollView>
