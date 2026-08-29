@@ -53,7 +53,7 @@ export async function loadSpend(db: SQLiteDatabase, at: number = Date.now()): Pr
     group.items.push({
       id: row.id,
       merchant: row.merchant,
-      category: (row.category ?? 'Income').toUpperCase(),
+      category: (row.category ?? (row.amount_cents > 0 ? 'Income' : 'Uncategorised')).toUpperCase(),
       categoryId: row.category_id,
       amountCents: row.amount_cents,
       income: row.amount_cents > 0,

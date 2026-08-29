@@ -18,6 +18,7 @@ import { SpendScreen } from './src/screens/SpendScreen';
 import { AddScreen } from './src/screens/AddScreen';
 import { TrendsScreen } from './src/screens/TrendsScreen';
 import { YouScreen } from './src/screens/YouScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { BudgetProvider, useBudget } from './src/state/BudgetProvider';
 import { parseAmountToCents } from './src/format';
 import { GUTTER, color } from './src/theme';
@@ -39,7 +40,8 @@ function Background({ children }: { children: React.ReactNode }) {
 
 function Phone() {
   const insets = useSafeAreaInsets();
-  const { data, addExpense, updateExpense, removeExpense, reset } = useBudget();
+  const { data, addExpense, updateExpense, removeExpense, completeOnboarding, reset, loadSampleData } =
+    useBudget();
   const [tab, setTab] = useState(0);
 
   /* Entry state lives above the screens so it survives a trip to another tab. */
@@ -55,6 +57,17 @@ function Phone() {
     return (
       <Background>
         <StatusBar style="light" />
+      </Background>
+    );
+  }
+
+  /* Rendered outside the tabbed ScrollView below: onboarding owns its own
+     scroll container and insets, and there is no tab bar to clear. */
+  if (!data.onboarded) {
+    return (
+      <Background>
+        <StatusBar style="light" />
+        <OnboardingScreen categories={data.add.categories} onComplete={completeOnboarding} />
       </Background>
     );
   }
@@ -90,7 +103,7 @@ function Phone() {
       onSubmit={submit}
     />,
     <TrendsScreen key="trends" data={data.trends} />,
-    <YouScreen key="you" data={data.you} onReset={reset} />,
+    <YouScreen key="you" data={data.you} onReset={reset} onLoadSample={loadSampleData} />,
   ];
 
   return (

@@ -53,12 +53,20 @@ export function SpendScreen({
           <Amount value={figure(data.totalCents)} size={40} symbolSize={20} />
         </View>
         <View style={styles.heroMeta}>
-          <T size={11.5} alpha={0.4}>
-            {data.transactionCount} transactions
-          </T>
-          <T size={11.5} alpha={0.4}>
-            avg {figure(data.averageCents)} €
-          </T>
+          {data.transactionCount ? (
+            <>
+              <T size={11.5} alpha={0.4}>
+                {data.transactionCount} transactions
+              </T>
+              <T size={11.5} alpha={0.4}>
+                avg {figure(data.averageCents)} €
+              </T>
+            </>
+          ) : (
+            <T size={11.5} alpha={0.4}>
+              Nothing spent this month yet
+            </T>
+          )}
         </View>
       </HeroCard>
 

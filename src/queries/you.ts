@@ -35,7 +35,8 @@ export async function loadYou(db: SQLiteDatabase, at: number = Date.now()): Prom
   const budget = await monthlyBudgetCents(db, monthKey(at));
 
   return {
-    name: byKey.get('display_name') ?? 'You',
+    // `||` not `??`: an empty name is storable, and it renders a blank avatar.
+    name: byKey.get('display_name') || 'You',
     memberSince: `MEMBER SINCE ${byKey.get('member_since') ?? new Date(at).getFullYear()}`,
     netWorthCents,
     monthDeltaCents: movement?.total ?? 0,
