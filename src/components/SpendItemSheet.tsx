@@ -1,11 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
-import { Eyebrow, T } from './primitives';
+import { Card, Eyebrow, T, TextField } from './primitives';
 import { CategoryChips } from './CategoryChips';
 import { Keypad } from './Keypad';
 import { Sheet } from './Sheet';
 import { tapDone, tapSelect, tapWarn } from '../haptics';
-import { amountLabel, centsToAmountInput, parseAmountToCents } from '../format';
+import {
+  amountLabel,
+  centsToAmountInput,
+  MAX_MERCHANT_LENGTH,
+  parseAmountToCents,
+  sanitizeMerchant,
+} from '../format';
 import type { SpendItem } from '../queries/spend';
 import { color, radius, w } from '../theme';
 
@@ -35,13 +41,20 @@ export function SpendItemSheet({
   item: SpendItem | null;
   categories: { id: string; name: string }[];
   onClose: () => void;
-  onSave: (input: { id: string; amountCents: number; categoryId: string | null; income: boolean }) => void;
+  onSave: (input: {
+    id: string;
+    amountCents: number;
+    categoryId: string | null;
+    income: boolean;
+    merchant: string;
+  }) => void;
   onDelete: (id: string) => void;
 }) {
   const [mode, setMode] = useState<'actions' | 'edit'>('actions');
   const [armed, setArmed] = useState(false);
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [merchant, setMerchant] = useState('');
   const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Each newly held row opens a fresh sheet: actions view, disarmed, reseeded. */
@@ -51,6 +64,7 @@ export function SpendItemSheet({
     setArmed(false);
     setAmount(centsToAmountInput(item.amountCents));
     setCategoryId(item.categoryId);
+    setMerchant(item.merchant);
   }, [item]);
 
   useEffect(() => {
@@ -81,7 +95,7 @@ export function SpendItemSheet({
   const save = () => {
     if (!canSave) return;
     tapDone();
-    onSave({ id: item.id, amountCents, categoryId, income: item.income });
+    onSave({ id: item.id, amountCents, categoryId, income: item.income, merchant: sanitizeMerchant(merchant) });
     onClose();
   };
 
@@ -149,7 +163,6 @@ export function SpendItemSheet({
             >
               {amount === '' ? '0' : amount}
             </T>
-            <View style={styles.caret} />
             <T weight="light" size={21} lineHeight={21} alpha={0.36}>
               €
             </T>
@@ -159,6 +172,21 @@ export function SpendItemSheet({
           {item.income ? null : (
             <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
           )}
+
+          <Card quiet style={styles.nameCard}>
+            <Eyebrow>For</Eyebrow>
+            <TextField
+              value={merchant}
+              onChangeText={setMerchant}
+              maxLength={MAX_MERCHANT_LENGTH}
+              placeholder="Quick entry"
+              autoCapitalize="words"
+              autoCorrect={false}
+              returnKeyType="done"
+              size={14}
+              style={{ color: color.textStrong }}
+            />
+          </Card>
 
           <Keypad value={amount} onChange={setAmount} />
 
@@ -207,6 +235,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: color.hairline,
   },
+  nameCard: { paddingHorizontal: 16, paddingVertical: 12, gap: 6 },
   action: {
     height: 52,
     borderRadius: radius.key,
@@ -220,13 +249,6 @@ const styles = StyleSheet.create({
   actionPressed: { backgroundColor: w(0.12) },
   cancel: { height: 40, alignItems: 'center', justifyContent: 'center' },
   amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, justifyContent: 'center' },
-  caret: {
-    width: 1.5,
-    height: 38,
-    borderRadius: 2,
-    backgroundColor: color.accentBright,
-    alignSelf: 'center',
-  },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   back: {
     height: 50,

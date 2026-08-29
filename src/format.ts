@@ -1,5 +1,17 @@
 /** Money lives in the database as integer cents and is formatted only here. */
 
+/** Longest a transaction name is allowed to be, enforced at the input and here. */
+export const MAX_MERCHANT_LENGTH = 40;
+
+/**
+ * Trims and collapses whitespace, caps length, and falls back to the app's
+ * default name if the result is empty — a blank name never gets written.
+ */
+export function sanitizeMerchant(input: string): string {
+  const cleaned = input.trim().replace(/\s+/g, ' ').slice(0, MAX_MERCHANT_LENGTH);
+  return cleaned || 'Quick entry';
+}
+
 const group = (n: number) => n.toLocaleString('en-US');
 
 /** Bare figure for the hero numbers — the Amount component adds the symbol. */

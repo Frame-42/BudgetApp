@@ -23,6 +23,7 @@ export function SpendScreen({
     amountCents: number;
     categoryId: string | null;
     income: boolean;
+    merchant: string;
   }) => void;
   onDelete: (id: string) => void;
 }) {

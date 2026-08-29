@@ -1,31 +1,33 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Eyebrow, HeroCard, T } from '../components/primitives';
+import { Card, Eyebrow, HeroCard, T, TextField } from '../components/primitives';
 import { CategoryChips } from '../components/CategoryChips';
 import { Keypad } from '../components/Keypad';
-import { figure, parseAmountToCents } from '../format';
+import { figure, MAX_MERCHANT_LENGTH, parseAmountToCents } from '../format';
 import { color, radius } from '../theme';
 
 /** 03 — Add: expense entry. */
 export function AddScreen({
   amount,
   onAmountChange,
+  merchant,
+  onMerchantChange,
   categories,
   categoryId,
   onCategoryChange,
   leftToSpendCents,
   daysRemaining,
-  onCancel,
   onSubmit,
 }: {
   amount: string;
   onAmountChange: (next: string) => void;
+  merchant: string;
+  onMerchantChange: (next: string) => void;
   categories: { id: string; name: string }[];
   categoryId: string | null;
   onCategoryChange: (next: string) => void;
   leftToSpendCents: number;
   daysRemaining: number;
-  onCancel: () => void;
   onSubmit: () => void;
 }) {
   const display = amount === '' ? '0' : amount;
@@ -37,13 +39,6 @@ export function AddScreen({
         <T size={19} lineHeight={21} tracking={-0.01}>
           New expense
         </T>
-        <Pressable onPress={onCancel} hitSlop={10}>
-          {({ pressed }) => (
-            <T size={12} alpha={pressed ? 0.7 : 0.4}>
-              Cancel
-            </T>
-          )}
-        </Pressable>
       </View>
 
       <HeroCard style={styles.hero}>
@@ -58,8 +53,6 @@ export function AddScreen({
           >
             {display}
           </T>
-          {/* The caret sits against the last digit; the symbol trails the whole figure. */}
-          <View style={styles.caret} />
           <T weight="light" size={24} lineHeight={24} alpha={0.36}>
             €
           </T>
@@ -70,6 +63,21 @@ export function AddScreen({
       </HeroCard>
 
       <CategoryChips categories={categories} value={categoryId} onChange={onCategoryChange} />
+
+      <Card quiet style={styles.nameCard}>
+        <Eyebrow>For</Eyebrow>
+        <TextField
+          value={merchant}
+          onChangeText={onMerchantChange}
+          maxLength={MAX_MERCHANT_LENGTH}
+          placeholder="Quick entry"
+          autoCapitalize="words"
+          autoCorrect={false}
+          returnKeyType="done"
+          size={14}
+          style={{ color: color.textStrong }}
+        />
+      </Card>
 
       <Keypad value={amount} onChange={onAmountChange} />
 
@@ -98,13 +106,7 @@ const styles = StyleSheet.create({
   },
   hero: { paddingVertical: 28, paddingHorizontal: 24, gap: 14, alignItems: 'center' },
   amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  caret: {
-    width: 1.5,
-    height: 44,
-    borderRadius: 2,
-    backgroundColor: color.accentBright,
-    alignSelf: 'center',
-  },
+  nameCard: { paddingHorizontal: 16, paddingVertical: 12, gap: 6 },
   submit: {
     height: 50,
     borderRadius: radius.pill,

@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import * as SQLite from 'expo-sqlite';
 import { getDb, resetDatabase } from '../db/client';
 import { createTransaction, deleteTransaction, editTransaction } from '../repo/transactions';
+import { sanitizeMerchant } from '../format';
 import { loadHome, type HomeData } from '../queries/home';
 import { loadSpend, type SpendData } from '../queries/spend';
 import { loadTrends, type TrendsData } from '../queries/trends';
@@ -18,12 +19,17 @@ export type Snapshot = {
 
 type BudgetContextValue = {
   data: Snapshot | null;
-  addExpense: (input: { amountCents: number; categoryId: string | null }) => Promise<void>;
+  addExpense: (input: {
+    amountCents: number;
+    categoryId: string | null;
+    merchant: string;
+  }) => Promise<void>;
   updateExpense: (input: {
     id: string;
     amountCents: number;
     categoryId: string | null;
     income: boolean;
+    merchant: string;
   }) => Promise<void>;
   removeExpense: (id: string) => Promise<void>;
   reset: () => Promise<void>;
@@ -68,7 +74,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, [load]);
 
   const addExpense = useCallback<BudgetContextValue['addExpense']>(
-    async ({ amountCents, categoryId }) => {
+    async ({ amountCents, categoryId, merchant }) => {
       if (amountCents <= 0) return;
       const db = await getDb();
       const accountId = (await loadAddOptions(db)).defaultAccountId;
@@ -76,8 +82,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       await createTransaction(db, {
         account_id: accountId,
         category_id: categoryId,
-        // The design's Add screen has no merchant field; this is where one goes.
-        merchant: 'Quick entry',
+        merchant: sanitizeMerchant(merchant),
         amount_cents: -amountCents,
         occurred_at: Date.now(),
       });
@@ -86,13 +91,14 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateExpense = useCallback<BudgetContextValue['updateExpense']>(
-    async ({ id, amountCents, categoryId, income }) => {
+    async ({ id, amountCents, categoryId, income, merchant }) => {
       if (amountCents <= 0) return;
       const db = await getDb();
       await editTransaction(db, id, {
         // The sheet edits a magnitude; the row's own direction decides the sign.
         amount_cents: income ? amountCents : -amountCents,
         category_id: categoryId,
+        merchant: sanitizeMerchant(merchant),
       });
     },
     [],

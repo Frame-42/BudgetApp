@@ -12,7 +12,7 @@ import {
 } from '@expo-google-fonts/geist';
 import { GeistMono_400Regular, GeistMono_500Medium } from '@expo-google-fonts/geist-mono';
 
-import { TabBar } from './src/components/TabBar';
+import { TabBar, TAB_BAR_HEIGHT } from './src/components/TabBar';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { SpendScreen } from './src/screens/SpendScreen';
 import { AddScreen } from './src/screens/AddScreen';
@@ -45,6 +45,7 @@ function Phone() {
   /* Entry state lives above the screens so it survives a trip to another tab. */
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [merchant, setMerchant] = useState('');
 
   useEffect(() => {
     if (!categoryId && data) setCategoryId(data.add.categories[0]?.id ?? null);
@@ -59,8 +60,9 @@ function Phone() {
   }
 
   const submit = async () => {
-    await addExpense({ amountCents: parseAmountToCents(amount), categoryId });
+    await addExpense({ amountCents: parseAmountToCents(amount), categoryId, merchant });
     setAmount('');
+    setMerchant('');
     setTab(1);
   };
 
@@ -78,15 +80,13 @@ function Phone() {
       key="add"
       amount={amount}
       onAmountChange={setAmount}
+      merchant={merchant}
+      onMerchantChange={setMerchant}
       categories={data.add.categories}
       categoryId={categoryId}
       onCategoryChange={setCategoryId}
       leftToSpendCents={data.home.leftToSpendCents}
       daysRemaining={data.home.daysRemaining}
-      onCancel={() => {
-        setAmount('');
-        setTab(0);
-      }}
       onSubmit={submit}
     />,
     <TrendsScreen key="trends" data={data.trends} />,
@@ -98,8 +98,15 @@ function Phone() {
       <StatusBar style="light" />
       <ScrollView
         style={styles.fill}
-        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 24) + 6 }]}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: Math.max(insets.top, 24) + 6,
+            paddingBottom: Math.max(insets.bottom, 12) + TAB_BAR_HEIGHT + 28,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {screens[tab]}
       </ScrollView>
@@ -131,5 +138,5 @@ export default function App() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  content: { paddingHorizontal: GUTTER, paddingBottom: 16 },
+  content: { paddingHorizontal: GUTTER },
 });
