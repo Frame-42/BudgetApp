@@ -1,134 +1,309 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { MONTH_ABBR, addMonths, monthKey, startOfMonth, startOfNextMonth } from '../time';
+import { MONTH_ABBR, addMonths, daysInMonth, monthKey } from '../time';
 
-export type TrendsData = {
-  monthlyAverageCents: number;
-  /** Percentage change of the recent quarter against the one before it. */
-  deltaPercent: number | null;
-  months: { key: string; label: string; totalCents: number; fraction: number; active: boolean }[];
-  /** Cumulative spend by day of month, as fractions of the plot's height. */
-  pace: { current: number[]; previous: number[] };
-  paceDeltaCents: number;
-  split: { name: string; percent: number; alpha: number; totalCents: number }[];
+export type Share = { name: string; percent: number; alpha: number; totalCents: number };
+
+/** How far back the screen looks: a quarter, a half year, or a year. */
+export const TREND_SPANS = [3, 6, 12] as const;
+export type TrendSpan = (typeof TREND_SPANS)[number];
+
+/** The longest span. Every shorter one is its tail, so one pass of rows serves all three. */
+const WIDEST: TrendSpan = TREND_SPANS[TREND_SPANS.length - 1];
+
+/** One bar in the month row, with everything the screen shows when it is tapped. */
+export type MonthStat = {
+  /** 'YYYY-MM'. */
+  key: string;
+  label: string;
+  totalCents: number;
+  /** Against the span's peak, for the bar's height. */
+  fraction: number;
+  /** The in-progress month. */
+  active: boolean;
+  /**
+   * Whether the month holds any transaction at all. A month that holds none is
+   * missing data rather than a month of no spending, so it is kept out of every
+   * figure the screen derives and cannot be picked.
+   */
+  present: boolean;
+  /** Whether the month before it has anything to compare against. */
+  hasPrevious: boolean;
+  /** Whether there is an average made of other months to read this one against. */
+  hasAverage: boolean;
+  /**
+   * Against the span's average; null before there is an average to compare to.
+   * A month still running is measured against where an average month had got to
+   * by the same day, not against a whole one.
+   */
+  deltaVsAveragePercent: number | null;
+  /**
+   * Cumulative spend by day: this month, and the two curves it can be read
+   * against. All three share one peak, so switching the comparison moves the
+   * dashed line without shifting the solid one.
+   */
+  pace: { current: number[]; previous: number[]; average: number[] };
+  /** How much lighter this month runs than each comparison, at the same point. */
+  paceDeltaCents: { previous: number; average: number };
+  /** The month the dashed line is drawn from — 'JUL' for August. */
+  previousLabel: string;
+  split: Share[];
 };
 
-const MONTHS_SHOWN = 6;
+export type TrendsData = {
+  /** How many months this view covers. */
+  span: TrendSpan;
+  monthlyAverageCents: number;
+  /** Percentage change of the completed months' recent half against the half before it. */
+  deltaPercent: number | null;
+  months: MonthStat[];
+  /** The average month as a cumulative curve, for the resting chart. */
+  averagePace: number[];
+  /** What a day costs in an average month — or so far this month, when partial. */
+  averageDailyCents: number;
+  /** How many months the average is built from. */
+  averageMonths: number;
+  /**
+   * The average is the month in progress, because no month has finished yet.
+   * The screen says "this month" rather than "an average month" when it is.
+   */
+  averageIsPartial: boolean;
+  /** The whole span's split, for when no month is selected. */
+  split: Share[];
+};
 
-/** The Trends screen: six months of shape, plus this month against last. */
-export async function loadTrends(db: SQLiteDatabase, at: number = Date.now()): Promise<TrendsData> {
-  const from = addMonths(at, -(MONTHS_SHOWN - 1));
+/** Every span, ready to switch between without going back to the database. */
+export type TrendsBundle = Record<TrendSpan, TrendsData>;
 
-  const rows = await db.getAllAsync<{ month: string; total: number }>(
+/** Top four categories by spend, with the tail rolled into "Other". */
+function toSplit(rows: { name: string; alpha: number; total: number }[]): Share[] {
+  const ranked = [...rows].sort((a, b) => b.total - a.total);
+  const total = Math.max(1, ranked.reduce((sum, r) => sum + r.total, 0));
+  const shares = ranked.slice(0, 4).map((r) => ({
+    name: r.name,
+    percent: Math.round((r.total / total) * 100),
+    alpha: r.alpha,
+    totalCents: r.total,
+  }));
+
+  const restTotal = ranked.slice(4).reduce((sum, r) => sum + r.total, 0);
+  if (restTotal > 0) {
+    // One of the seven categories is itself called "Other". When it lands in the
+    // top four the tail folds into it, rather than sitting beside it as a second
+    // slice of the same name.
+    const named = shares.find((share) => share.name === 'Other');
+    if (named) {
+      named.totalCents += restTotal;
+      named.percent = Math.round((named.totalCents / total) * 100);
+    } else {
+      shares.push({
+        name: 'Other',
+        percent: Math.round((restTotal / total) * 100),
+        alpha: 0.16,
+        totalCents: restTotal,
+      });
+    }
+  }
+  return shares;
+}
+
+/**
+ * The Trends screen: three, six or twelve months of shape, each month able to
+ * stand on its own. The rows are read once over the longest span and every view
+ * is built from them, so switching span costs nothing.
+ */
+export async function loadTrends(db: SQLiteDatabase, at: number = Date.now()): Promise<TrendsBundle> {
+  /** One month further back than the widest row shows, so its oldest bar has a pace line to sit over. */
+  const withLeadIn = addMonths(at, -WIDEST);
+
+  // Counted over every transaction, not just spending, so a month that holds
+  // only income still counts as a month that was recorded.
+  const rows = await db.getAllAsync<{ month: string; entries: number; total: number }>(
     `SELECT strftime('%Y-%m', occurred_at / 1000, 'unixepoch', 'localtime') AS month,
+            COUNT(*) AS entries,
+            IFNULL(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents END), 0) AS total
+       FROM transactions
+      WHERE deleted_at IS NULL AND occurred_at >= ?
+      GROUP BY month`,
+    [withLeadIn],
+  );
+  const totals = new Map(rows.map((r) => [r.month, r.total]));
+  const recorded = new Set(rows.filter((r) => r.entries > 0).map((r) => r.month));
+
+  // --- pace: every month's cumulative curve, in one pass ----------------------
+  const daily = await db.getAllAsync<{ month: string; day: number; total: number }>(
+    `SELECT strftime('%Y-%m', occurred_at / 1000, 'unixepoch', 'localtime') AS month,
+            CAST(strftime('%d', occurred_at / 1000, 'unixepoch', 'localtime') AS INTEGER) AS day,
             IFNULL(SUM(-amount_cents), 0) AS total
        FROM transactions
       WHERE deleted_at IS NULL AND amount_cents < 0 AND occurred_at >= ?
-      GROUP BY month`,
-    [from],
+      GROUP BY month, day`,
+    [withLeadIn],
   );
-  const totals = new Map(rows.map((r) => [r.month, r.total]));
-
-  const months = Array.from({ length: MONTHS_SHOWN }, (_, i) => {
-    const stamp = addMonths(at, -(MONTHS_SHOWN - 1 - i));
-    const key = monthKey(stamp);
-    return {
-      key,
-      label: MONTH_ABBR[new Date(stamp).getMonth()],
-      totalCents: totals.get(key) ?? 0,
-      fraction: 0,
-      active: i === MONTHS_SHOWN - 1,
-    };
-  });
-  const peak = Math.max(1, ...months.map((m) => m.totalCents));
-  for (const month of months) month.fraction = month.totalCents / peak;
-
-  const completed = months.filter((m) => !m.active);
-  const monthlyAverageCents = completed.length
-    ? Math.round(completed.reduce((sum, m) => sum + m.totalCents, 0) / completed.length)
-    : 0;
-
-  const recent = completed.slice(-3);
-  const earlier = completed.slice(0, 3);
-  const avg = (list: typeof completed) =>
-    list.length ? list.reduce((sum, m) => sum + m.totalCents, 0) / list.length : 0;
-  const deltaPercent = earlier.length && avg(earlier) > 0
-    ? Math.round(((avg(recent) - avg(earlier)) / avg(earlier)) * 100)
-    : null;
-
-  // --- pace: cumulative spend, this month against last -----------------------
-  const cumulative = async (start: number, end: number): Promise<number[]> => {
-    const daily = await db.getAllAsync<{ day: number; total: number }>(
-      `SELECT CAST(strftime('%d', occurred_at / 1000, 'unixepoch', 'localtime') AS INTEGER) AS day,
-              IFNULL(SUM(-amount_cents), 0) AS total
-         FROM transactions
-        WHERE deleted_at IS NULL AND amount_cents < 0 AND occurred_at >= ? AND occurred_at < ?
-        GROUP BY day ORDER BY day`,
-      [start, end],
-    );
-    const byDay = new Map(daily.map((r) => [r.day, r.total]));
+  const byMonthDay = new Map<string, Map<number, number>>();
+  for (const row of daily) {
+    const days = byMonthDay.get(row.month) ?? new Map<number, number>();
+    days.set(row.day, row.total);
+    byMonthDay.set(row.month, days);
+  }
+  const cumulative = (stamp: number): number[] => {
+    const days = byMonthDay.get(monthKey(stamp));
     const series: number[] = [];
     let running = 0;
-    const days = new Date(end - 1).getDate();
-    for (let day = 1; day <= days; day++) {
-      running += byDay.get(day) ?? 0;
+    for (let day = 1; day <= daysInMonth(stamp); day++) {
+      running += days?.get(day) ?? 0;
       series.push(running);
     }
     return series;
   };
 
-  const currentSeries = (await cumulative(startOfMonth(at), startOfNextMonth(at))).slice(
-    0,
-    new Date(at).getDate(),
-  );
-  const previousSeries = await cumulative(addMonths(at, -1), startOfMonth(at));
-
-  const scale = Math.max(1, ...currentSeries, ...previousSeries);
-  const dayOfMonth = new Date(at).getDate();
-  const paceDeltaCents =
-    (previousSeries[dayOfMonth - 1] ?? previousSeries[previousSeries.length - 1] ?? 0) -
-    (currentSeries[currentSeries.length - 1] ?? 0);
-
-  // --- where it goes ---------------------------------------------------------
-  const splitRows = await db.getAllAsync<{ name: string; alpha: number; total: number }>(
-    `SELECT c.name, c.color_alpha AS alpha, IFNULL(SUM(-t.amount_cents), 0) AS total
+  // --- where it goes, per month ----------------------------------------------
+  const splitRows = await db.getAllAsync<{ month: string; name: string; alpha: number; total: number }>(
+    `SELECT strftime('%Y-%m', t.occurred_at / 1000, 'unixepoch', 'localtime') AS month,
+            c.name, c.color_alpha AS alpha, IFNULL(SUM(-t.amount_cents), 0) AS total
        FROM transactions t
        JOIN categories c ON c.id = t.category_id
       WHERE t.deleted_at IS NULL AND t.amount_cents < 0 AND t.occurred_at >= ?
-      GROUP BY c.id
-      ORDER BY total DESC`,
-    [from],
+      GROUP BY month, c.id`,
+    [withLeadIn],
   );
-  const splitTotal = Math.max(1, splitRows.reduce((sum, r) => sum + r.total, 0));
-  const top = splitRows.slice(0, 4);
-  const restTotal = splitRows.slice(4).reduce((sum, r) => sum + r.total, 0);
-  const split = [
-    ...top.map((r) => ({
-      name: r.name,
-      percent: Math.round((r.total / splitTotal) * 100),
-      alpha: r.alpha,
-      totalCents: r.total,
-    })),
-    ...(restTotal > 0
-      ? [
-          {
-            name: 'Other',
-            percent: Math.round((restTotal / splitTotal) * 100),
-            alpha: 0.16,
-            totalCents: restTotal,
-          },
-        ]
-      : []),
-  ];
+  const splitByMonth = new Map<string, { name: string; alpha: number; total: number }[]>();
+  for (const row of splitRows) {
+    splitByMonth.set(row.month, [...(splitByMonth.get(row.month) ?? []), row]);
+  }
 
-  return {
-    monthlyAverageCents,
-    deltaPercent,
-    months,
-    pace: {
-      current: currentSeries.map((v) => v / scale),
-      previous: previousSeries.map((v) => v / scale),
-    },
-    paceDeltaCents,
-    split,
+  const build = (span: TrendSpan): TrendsData => {
+    const stamps = Array.from({ length: span }, (_, i) => addMonths(at, -(span - 1 - i)));
+    const shown = stamps.map((stamp, i) => {
+      const key = monthKey(stamp);
+      const active = i === span - 1;
+      return {
+        key,
+        label: MONTH_ABBR[new Date(stamp).getMonth()],
+        totalCents: totals.get(key) ?? 0,
+        active,
+        // The month in progress is present by definition, even before its first row.
+        present: active || recorded.has(key),
+        hasPrevious: recorded.has(monthKey(addMonths(stamp, -1))),
+      };
+    });
+
+    const peak = Math.max(1, ...shown.map((m) => m.totalCents));
+
+    const dayOfMonth = new Date(at).getDate();
+    /** A month's cumulative curve. The one in progress stops at today. */
+    const curve = (stamp: number, active: boolean) =>
+      active ? cumulative(stamp).slice(0, dayOfMonth) : cumulative(stamp);
+
+    // Months with nothing recorded sit out of every average and comparison below.
+    const completed = shown.filter((m) => !m.active && m.present);
+    /**
+     * Before any month has finished there is nothing to average, so the month in
+     * progress stands as the only month there is: its total, its curve and its
+     * day rate carry the screen, and every expense added today moves them. The
+     * first month to finish takes over, and the running month goes back to being
+     * read against finished ones rather than standing for them.
+     */
+    const averageIsPartial = completed.length === 0;
+    const basisIndexes = averageIsPartial
+      ? [span - 1]
+      : shown.map((_, i) => i).filter((i) => !shown[i].active && shown[i].present);
+    const basis = basisIndexes.map((i) => shown[i]);
+    const basisKeys = new Set(basis.map((m) => m.key));
+    const monthlyAverageCents = Math.round(
+      basis.reduce((sum, m) => sum + m.totalCents, 0) / basis.length,
+    );
+
+    // Two halves of equal length, so no month is counted on both sides of the
+    // comparison. An odd month in the middle sits out.
+    const half = Math.floor(completed.length / 2);
+    const avg = (list: typeof completed) =>
+      list.length ? list.reduce((sum, m) => sum + m.totalCents, 0) / list.length : 0;
+    const earlier = completed.slice(0, half);
+    const deltaPercent = half && avg(earlier) > 0
+      ? Math.round(((avg(completed.slice(-half)) - avg(earlier)) / avg(earlier)) * 100)
+      : null;
+
+    /**
+     * The average month, day by day. Months shorter than the longest one hold at
+     * their final total, so the curve still ends on `monthlyAverageCents`.
+     */
+    const basisSeries = basisIndexes.map((i) => curve(stamps[i], shown[i].active));
+    const averageSpan = Math.max(0, ...basisSeries.map((series) => series.length));
+    const averageSeries = Array.from({ length: averageSpan }, (_, i) =>
+      Math.round(
+        basisSeries.reduce((sum, series) => sum + (series[i] ?? series[series.length - 1] ?? 0), 0) /
+          basisSeries.length,
+      ),
+    );
+    const averagePeak = Math.max(1, ...averageSeries);
+
+    const overall = new Map<string, { name: string; alpha: number; total: number }>();
+    for (const month of shown) {
+      for (const row of splitByMonth.get(month.key) ?? []) {
+        const seen = overall.get(row.name);
+        if (seen) seen.total += row.total;
+        else overall.set(row.name, { name: row.name, alpha: row.alpha, total: row.total });
+      }
+    }
+
+    const months: MonthStat[] = shown.map((month, i) => {
+      const stamp = stamps[i];
+      // The in-progress month stops at today; a finished one runs to its last day.
+      const current = curve(stamp, month.active);
+      const previous = cumulative(addMonths(stamp, -1));
+      const scale = Math.max(1, ...current, ...previous, ...averageSeries);
+      const day = current.length;
+      const standing = current[current.length - 1] ?? 0;
+      /* Where a comparison had got to by the same day; a shorter month holds at its total. */
+      const sameDay = (series: number[]) => series[day - 1] ?? series[series.length - 1] ?? 0;
+
+      const averageSoFar = sameDay(averageSeries);
+      /* An average made of this month alone has nothing to tell it about itself. */
+      const hasAverage = basisKeys.size > 1 || !basisKeys.has(month.key);
+
+      return {
+        ...month,
+        hasAverage,
+        fraction: month.totalCents / peak,
+        // Two days of September against a whole average month reads as a 95%
+        // saving, so a running month is compared at the point it has reached —
+        // the same span the pace line under the chart uses.
+        deltaVsAveragePercent: !month.present || !hasAverage
+          ? null
+          : month.active
+            ? averageSoFar > 0
+              ? Math.round(((standing - averageSoFar) / averageSoFar) * 100)
+              : null
+            : monthlyAverageCents > 0
+              ? Math.round(((month.totalCents - monthlyAverageCents) / monthlyAverageCents) * 100)
+              : null,
+        pace: {
+          current: current.map((v) => v / scale),
+          previous: previous.map((v) => v / scale),
+          average: averageSeries.map((v) => v / scale),
+        },
+        // Same span of both curves, so a short February never reads as a saving.
+        paceDeltaCents: {
+          previous: sameDay(previous) - standing,
+          average: averageSoFar - standing,
+        },
+        previousLabel: MONTH_ABBR[new Date(addMonths(stamp, -1)).getMonth()],
+        split: toSplit(splitByMonth.get(month.key) ?? []),
+      };
+    });
+
+    return {
+      span,
+      monthlyAverageCents,
+      deltaPercent,
+      months,
+      averagePace: averageSeries.map((v) => v / averagePeak),
+      averageDailyCents: averageSpan ? Math.round(monthlyAverageCents / averageSpan) : 0,
+      averageMonths: basis.length,
+      averageIsPartial,
+      split: toSplit([...overall.values()]),
+    };
   };
+
+  return Object.fromEntries(TREND_SPANS.map((span) => [span, build(span)])) as TrendsBundle;
 }
