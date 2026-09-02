@@ -7,20 +7,26 @@ import { createTransaction, deleteTransaction, editTransaction } from '../repo/t
 import { sanitizeMerchant } from '../format';
 import { loadHome, type HomeData } from '../queries/home';
 import { loadSpend, type SpendData } from '../queries/spend';
-import { loadTrends, type TrendsData } from '../queries/trends';
+import { loadTrends, type TrendsBundle } from '../queries/trends';
 import { loadYou, type YouData } from '../queries/you';
 import { loadAddOptions, type AddOptions } from '../queries/add';
 
 /** Set once the first run finishes. Local-only, so it never syncs away. */
 const ONBOARDED_KEY = 'onboarded_at';
 
+/** Set the first time a Trends bar is tapped, to retire that screen's hint. */
+const MONTH_PICKED_KEY = 'trends_month_picked_at';
+
 export type Snapshot = {
   home: HomeData;
   spend: SpendData;
-  trends: TrendsData;
+  /** Every span the Trends screen can switch to. */
+  trends: TrendsBundle;
   you: YouData;
   add: AddOptions;
   onboarded: boolean;
+  /** Whether the month bars have ever been used, so the hint can stand down. */
+  monthPicked: boolean;
 };
 
 type BudgetContextValue = {
@@ -39,6 +45,7 @@ type BudgetContextValue = {
   }) => Promise<void>;
   removeExpense: (id: string) => Promise<void>;
   completeOnboarding: (input: OnboardingInput) => Promise<void>;
+  notePickedMonth: () => Promise<void>;
   reset: () => Promise<void>;
   /** Development only: throw everything away and land on a populated month. */
   loadSampleData: () => Promise<void>;
@@ -58,17 +65,26 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   const load = useCallback(async () => {
     const db = await getDb();
-    const [home, spend, trends, you, add, onboardedAt] = await Promise.all([
+    const [home, spend, trends, you, add, onboardedAt, pickedAt] = await Promise.all([
       loadHome(db),
       loadSpend(db),
       loadTrends(db),
       loadYou(db),
       loadAddOptions(db),
       getMeta(db, ONBOARDED_KEY),
+      getMeta(db, MONTH_PICKED_KEY),
     ]);
     // Resolving the flag alongside the rest keeps `data` null until the gate can
     // be decided, so Home never flashes before onboarding mounts.
-    setData({ home, spend, trends, you, add, onboarded: onboardedAt !== null });
+    setData({
+      home,
+      spend,
+      trends,
+      you,
+      add,
+      onboarded: onboardedAt !== null,
+      monthPicked: pickedAt !== null,
+    });
   }, []);
 
   useEffect(() => {
@@ -134,6 +150,13 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     [load],
   );
 
+  /** The Trends hint has done its job; remember that across restarts. */
+  const notePickedMonth = useCallback(async () => {
+    const db = await getDb();
+    await setMeta(db, MONTH_PICKED_KEY, String(Date.now()));
+    await load();
+  }, [load]);
+
   /** Resetting first means this never has to reason about existing real data. */
   const loadSampleData = useCallback(async () => {
     await resetDatabase();
@@ -156,6 +179,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         updateExpense,
         removeExpense,
         completeOnboarding,
+        notePickedMonth,
         reset,
         loadSampleData,
       }}

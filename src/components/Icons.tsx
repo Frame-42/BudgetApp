@@ -10,6 +10,32 @@ const Frame = ({ size = 17, children }: { size?: number; children: React.ReactNo
   </Svg>
 );
 
+/** Marks a tip: round glass over a screw base, legible down to ~10px. */
+export const BulbIcon = ({ color, size }: IconProps) => (
+  <Frame size={size}>
+    <Circle cx={9} cy={7.4} r={4.2} stroke={color} strokeWidth={1.5} />
+    <Path
+      d="M6.9 12.7h4.2M7.7 15.1h2.6"
+      stroke={color}
+      strokeWidth={1.5}
+      strokeLinecap="round"
+    />
+  </Frame>
+);
+
+/** The one "there's another option behind this" mark in the app. */
+export const CaretIcon = ({ color, size }: IconProps) => (
+  <Frame size={size}>
+    <Path
+      d="M4.5 7 9 11.5 13.5 7"
+      stroke={color}
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Frame>
+);
+
 export const HomeIcon = ({ color, size }: IconProps) => (
   <Frame size={size}>
     <Path

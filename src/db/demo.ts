@@ -16,10 +16,14 @@ import { putSetting } from '../repo/settings';
  * Everything below is in integer cents.
  */
 
-const MONTHS_OF_HISTORY = 5;
+/** Oldest first: what each completed month adds up to. A year of them, so the
+ *  Trends screen's 1Y span has something to show. */
+const HISTORY_TOTALS = [
+  275_000, 340_000, 250_000, 268_000, 315_000, 232_000,
+  290_000, 330_000, 260_000, 305_000, 245_000,
+];
 
-/** Oldest first: what each completed month adds up to. */
-const HISTORY_TOTALS = [290_000, 330_000, 260_000, 305_000, 245_000];
+const MONTHS_OF_HISTORY = HISTORY_TOTALS.length;
 
 const SALARY_CENTS = 420_000;
 const RENT_CENTS = 145_000;

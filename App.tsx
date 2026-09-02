@@ -40,8 +40,16 @@ function Background({ children }: { children: React.ReactNode }) {
 
 function Phone() {
   const insets = useSafeAreaInsets();
-  const { data, addExpense, updateExpense, removeExpense, completeOnboarding, reset, loadSampleData } =
-    useBudget();
+  const {
+    data,
+    addExpense,
+    updateExpense,
+    removeExpense,
+    completeOnboarding,
+    notePickedMonth,
+    reset,
+    loadSampleData,
+  } = useBudget();
   const [tab, setTab] = useState(0);
 
   /* Entry state lives above the screens so it survives a trip to another tab. */
@@ -102,7 +110,12 @@ function Phone() {
       daysRemaining={data.home.daysRemaining}
       onSubmit={submit}
     />,
-    <TrendsScreen key="trends" data={data.trends} />,
+    <TrendsScreen
+      key="trends"
+      data={data.trends}
+      showHint={!data.monthPicked}
+      onPickMonth={notePickedMonth}
+    />,
     <YouScreen key="you" data={data.you} onReset={reset} onLoadSample={loadSampleData} />,
   ];
 
