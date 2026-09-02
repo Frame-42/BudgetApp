@@ -42,6 +42,7 @@ it, and prefer `npx expo install` over `npm install` so versions match the SDK.
 | `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
 | `src/repo/` | Typed CRUD per table — the only place writes happen |
 | `src/queries/` | Derived figures per screen; pure, rows in / numbers out |
+| `src/import/` | Bank-export reading: `csv.ts`, `rules.ts` (MCC + merchant names), `plan.ts` |
 | `src/state/BudgetProvider.tsx` | Opens the DB, recomputes on every change |
 | `src/sync/` | The `SyncEngine` interface and its no-op default |
 | `src/format.ts`, `src/time.ts` | Money and date formatting |
@@ -96,20 +97,49 @@ updating. This has already been hit once.
 crops Geist's ascenders on iOS. `primitives.tsx` clamps everything to
 `size * MIN_LEADING` (1.15); leave the clamp in place.
 
+**The importer decides nothing twice.** `transactions.external_id` (migration v2)
+holds the bank's own id, and a row whose id is already present is skipped
+silently — that is what makes re-importing an overlapping export safe. It is
+indexed but *not* UNIQUE on purpose: a constraint would abort the batch where the
+planner wants to look ahead and report "already imported". Rows typed by hand
+have no id, so they get a fuzzy check instead (same cents, ±3 days, same merchant
+key) which only ever *flags* — a file can legitimately hold two runs to the same
+shop on one afternoon, so dropping a match automatically would lose real spending. `skip` and
+`decided` are separate fields for the same reason: a flagged duplicate starts
+skipped, so "decided" cannot be inferred from it.
+
+**Merchant memory outranks the MCC table.** `src/import/rules.ts` resolves in the
+order: securities purchase → what the user has previously chosen for that
+merchant → MCC → review. A code is a guess about a business; the memory is a
+decision the user already made, and it is derived by counting existing
+transactions rather than stored, so ordinary manual entry teaches it too.
+
+**Nothing is auto-filed as 'Other', and no MCC appears in two groups.** An
+unmapped code goes to review, where one answer teaches the memory for good;
+filing it as Other would look like a decision while being the absence of one. The
+groups in `MCC_CATEGORIES` are flattened into a Map, so a code listed twice lets
+the last group silently win — 5813 was in both Dining and Leisure once already.
+
 **Colour is reserved for status.** The palette is white-at-an-alpha over
 graphite, plus the two accent tints in `theme.ts` for on-track status and income.
 Introducing a new hue is a design decision, not a styling one.
 
 ## Verifying changes on this machine
 
-The live simulator panel (`mcp__Claude_Code_iOS_Simulator__control`) is **blocked**
-— `/var/db/xcode_select_link` is missing, and the fix needs the user's password:
+`xcode-select` is set (`/var/db/xcode_select_link` → Xcode, since 2026-08-28), so
+the live simulator panel (`mcp__Claude_Code_iOS_Simulator__control`) **works**,
+touch injection included. An earlier note here said it was blocked; that is no
+longer true.
 
-```bash
-sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-```
+Two things about the panel that cost time on 2026-09-02:
 
-Until that is run, there is no touch injection. What does work:
+- Its `screenshot` action fails intermittently with "restarting after a crash".
+  Don't retry it in a loop — `xcrun simctl io booted screenshot` never fails and
+  is the better default anyway.
+- `tap`/`swipe` coordinates are **device points** (402×874 on the iPhone 17 Pro),
+  while a `simctl` screenshot is 3× that (1206×2622). Divide screenshot pixels by
+  3 before tapping, or every tap lands somewhere else. A tap on the wrong spot
+  inside the scrolling column reads as a drag and scrolls the page instead.
 
 **`/reload` is unreliable, and Fast Refresh is not a substitute.** A source edit
 triggers Fast Refresh, which *preserves module state* — including the memoized
@@ -119,8 +149,12 @@ the app keeps using its already-open connection and nothing appears to change:
 
 ```bash
 xcrun simctl terminate booted host.exp.Exponent
-xcrun simctl openurl booted "exp://<lan-ip>:8081"   # lan-ip is in the expo start output
+xcrun simctl openurl booted "exp://127.0.0.1:8081"   # host is in the /reload response
 ```
+
+A `/reload` can also land Expo Go in a broken runtime — "Cannot find native module
+'ExpoAsset'" on a red screen, with no dependency having changed. The cold start
+above clears it; don't go hunting for it in the diff.
 
 ```bash
 # screenshot the booted simulator
@@ -131,7 +165,7 @@ curl -X POST http://localhost:8081/reload
 
 # cold start on a new bundle
 xcrun simctl terminate booted host.exp.Exponent
-xcrun simctl openurl booted "exp://<lan-ip>:8081"
+xcrun simctl openurl booted "exp://127.0.0.1:8081"
 ```
 
 Bash tool calls that write files via `simctl` need absolute paths and

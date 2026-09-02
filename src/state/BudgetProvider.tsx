@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import * as SQLite from 'expo-sqlite';
 import { getDb, getMeta, resetDatabase, setMeta } from '../db/client';
 import { loadDemoData } from '../db/demo';
+import { commitImport } from '../db/import';
 import { runOnboarding, type OnboardingInput } from '../db/onboarding';
 import { createTransaction, deleteTransaction, editTransaction } from '../repo/transactions';
 import { sanitizeMerchant } from '../format';
@@ -10,6 +11,7 @@ import { loadSpend, type SpendData } from '../queries/spend';
 import { loadTrends, type TrendsBundle } from '../queries/trends';
 import { loadYou, type YouData } from '../queries/you';
 import { loadAddOptions, type AddOptions } from '../queries/add';
+import { buildImportPlan, type ImportPlan } from '../import/plan';
 
 /** Set once the first run finishes. Local-only, so it never syncs away. */
 const ONBOARDED_KEY = 'onboarded_at';
@@ -47,6 +49,10 @@ type BudgetContextValue = {
   completeOnboarding: (input: OnboardingInput) => Promise<void>;
   notePickedMonth: () => Promise<void>;
   reset: () => Promise<void>;
+  /** Reads an export and returns what it would do, without writing anything. */
+  planImport: (text: string) => Promise<ImportPlan>;
+  /** Writes a plan the user has finished reviewing; resolves with the count. */
+  runImport: (plan: ImportPlan) => Promise<number>;
   /** Development only: throw everything away and land on a populated month. */
   loadSampleData: () => Promise<void>;
 };
@@ -157,6 +163,23 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     await load();
   }, [load]);
 
+  const planImport = useCallback(async (text: string) => {
+    const db = await getDb();
+    return buildImportPlan(db, text);
+  }, []);
+
+  /**
+   * No explicit `load()` afterwards: this writes only transactions, so the
+   * change listener picks it up — unlike the flows that write `sync_meta`,
+   * which SQLite's listener does not report.
+   */
+  const runImport = useCallback(async (plan: ImportPlan) => {
+    const db = await getDb();
+    const accountId = (await loadAddOptions(db)).defaultAccountId;
+    if (!accountId) return 0;
+    return commitImport(db, plan, accountId);
+  }, []);
+
   /** Resetting first means this never has to reason about existing real data. */
   const loadSampleData = useCallback(async () => {
     await resetDatabase();
@@ -181,6 +204,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         completeOnboarding,
         notePickedMonth,
         reset,
+        planImport,
+        runImport,
         loadSampleData,
       }}
     >
