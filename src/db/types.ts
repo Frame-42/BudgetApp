@@ -33,6 +33,8 @@ export type TransactionRow = SyncRow & {
   amount_cents: number;
   occurred_at: number;
   note: string | null;
+  /** The bank's id when this row was imported; NULL when it was typed in. */
+  external_id: string | null;
 };
 
 export type BudgetRow = SyncRow & {

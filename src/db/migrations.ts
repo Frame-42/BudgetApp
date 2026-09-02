@@ -121,10 +121,23 @@ ${SYNCED_TABLES.map(outboxTriggers).join('\n')}
 `;
 
 /**
+ * The bank's own id for an imported row. It is what makes importing the same
+ * export twice safe, and the only dedup signal that is exact rather than a
+ * guess. NULL on everything entered by hand.
+ *
+ * Indexed, not UNIQUE: a constraint would abort a batch mid-flight, where what
+ * the importer wants is to look ahead and report "already imported".
+ */
+const V2 = `
+ALTER TABLE transactions ADD COLUMN external_id TEXT;
+CREATE INDEX transactions_external_id ON transactions (external_id);
+`;
+
+/**
  * Ordered, append-only. To change the schema, add a step — never edit one that
  * has shipped, because devices in the field have already run it.
  */
-export const MIGRATIONS: string[] = [V1];
+export const MIGRATIONS: string[] = [V1, V2];
 
 /** Applies whatever hasn't run yet, tracked in PRAGMA user_version. */
 export async function migrate(db: SQLiteDatabase): Promise<void> {

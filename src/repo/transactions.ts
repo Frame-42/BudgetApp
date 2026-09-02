@@ -10,10 +10,12 @@ export type NewTransaction = {
   amount_cents: number;
   occurred_at: number;
   note?: string | null;
+  /** Set only by the importer, from the export's own transaction id. */
+  external_id?: string | null;
 };
 
 export const createTransaction = (db: SQLiteDatabase, values: NewTransaction) =>
-  insertRow(db, 'transactions', { note: null, ...values });
+  insertRow(db, 'transactions', { note: null, external_id: null, ...values });
 
 export const editTransaction = (
   db: SQLiteDatabase,

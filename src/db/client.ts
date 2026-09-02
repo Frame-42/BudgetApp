@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { migrate } from './migrations';
-import { seedIfEmpty } from './seed';
+import { addMissingDefaultCategories, alignDefaultCategoryOrder, seedIfEmpty } from './seed';
 import { newId } from './ids';
 
 const DB_NAME = 'budget.db';
@@ -21,6 +21,10 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
   await migrate(db);
   await ensureDeviceId(db);
   await seedIfEmpty(db);
+  // A no-op straight after the seed; it earns its keep on databases that already
+  // existed when a default category was added.
+  await addMissingDefaultCategories(db);
+  await alignCategoryOrderOnce(db);
   return db;
 }
 
@@ -42,6 +46,18 @@ export async function setMeta(
       'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     [key, value],
   );
+}
+
+/**
+ * Bumped when `DEFAULT_CATEGORIES` is reordered, so each device resequences once
+ * and then leaves the column alone. The key is local-only, like `onboarded_at`.
+ */
+const CATEGORY_ORDER_VERSION = '2';
+
+async function alignCategoryOrderOnce(db: SQLite.SQLiteDatabase): Promise<void> {
+  if ((await getMeta(db, 'category_order')) === CATEGORY_ORDER_VERSION) return;
+  await alignDefaultCategoryOrder(db);
+  await setMeta(db, 'category_order', CATEGORY_ORDER_VERSION);
 }
 
 /** Identifies this install; sync uses it to break ties between equal timestamps. */

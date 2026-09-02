@@ -48,6 +48,8 @@ function Phone() {
     completeOnboarding,
     notePickedMonth,
     reset,
+    planImport,
+    runImport,
     loadSampleData,
   } = useBudget();
   const [tab, setTab] = useState(0);
@@ -116,7 +118,15 @@ function Phone() {
       showHint={!data.monthPicked}
       onPickMonth={notePickedMonth}
     />,
-    <YouScreen key="you" data={data.you} onReset={reset} onLoadSample={loadSampleData} />,
+    <YouScreen
+      key="you"
+      data={data.you}
+      categories={data.add.categories}
+      onPlanImport={planImport}
+      onRunImport={runImport}
+      onReset={reset}
+      onLoadSample={loadSampleData}
+    />,
   ];
 
   return (
