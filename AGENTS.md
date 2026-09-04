@@ -54,9 +54,12 @@ it, and prefer `npx expo install` over `npm install` so versions match the SDK.
 only the seven categories and one Checking account — the account is what makes its
 `COUNT(*) FROM accounts` guard work, so never reduce it to categories alone.
 Everything else comes from onboarding (`src/db/onboarding.ts`), which writes name,
-employment, the monthly budget and the weekly-recap preference in one transaction.
-It is a port of the `Onboarding Phone.dc.html` canvas — four steps, and the canvas
-never asks for a balance, so Checking keeps its opening figure of zero. The gate is `sync_meta.onboarded_at`
+employment, the monthly budget, a limit per kept category and the weekly-recap
+preference in one transaction. It ports the `Onboarding Phone.dc.html` canvas —
+a welcome plus four steps; the per-category limits in step 4 are ours, not the
+canvas's, and a category left blank there gets no budget row at all, which is not
+the same as a row of zero. The canvas never asks for a balance, so Checking keeps
+its opening figure of zero. The gate is `sync_meta.onboarded_at`
 — local-only and never synced, so `resetDatabase()` clears it and a second device
 onboards again. `src/db/demo.ts` holds the months of history the charts need; it is
 reachable only from `src/devtools/DevToolsPanel.tsx`.

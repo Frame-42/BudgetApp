@@ -97,7 +97,7 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
         <View style={styles.rowBetween}>
           <Eyebrow tracking={0.14}>Categories</Eyebrow>
           <T size={11.5} alpha={0.38}>
-            {data.categories.length} of {data.categoryCount}
+            {data.categoryCount}
           </T>
         </View>
         <View style={{ gap: 15 }}>
@@ -113,21 +113,25 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
                     : `${figure(cat.spentCents)} €`}
                 </T>
               </View>
-              {/* With no limit set there is nothing to fill against, and an empty
-                  track reads as a limit of zero rather than as no limit at all. */}
-              {cat.limitCents > 0 ? (
-                <View style={styles.track}>
-                  <View
-                    style={[
-                      styles.trackFill,
-                      {
-                        width: `${cat.fill * 100}%`,
-                        backgroundColor: `rgba(233,235,242,${cat.alpha})`,
-                      },
-                    ]}
-                  />
-                </View>
-              ) : null}
+              {/* Every category gets a track, so the rows read as one column —
+                  including the ones with no limit, which simply never fill. */}
+              <View style={styles.track}>
+                <View
+                  style={[
+                    styles.trackFill,
+                    {
+                      width: `${cat.fill * 100}%`,
+                      backgroundColor: `rgba(233,235,242,${cat.alpha})`,
+                    },
+                  ]}
+                />
+                {/* A full bar means "at the limit" and "half again as much" alike,
+                    so past the limit it gets a cap at the end. Strictly past:
+                    spending exactly the limit is not yet over it. */}
+                {cat.limitCents > 0 && cat.spentCents > cat.limitCents ? (
+                  <View style={styles.trackOver} />
+                ) : null}
+              </View>
             </View>
           ))}
         </View>
@@ -183,6 +187,19 @@ const styles = StyleSheet.create({
   rowBaseline: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   track: { height: 3, borderRadius: 2, backgroundColor: color.track, overflow: 'hidden' },
   trackFill: { height: '100%', borderRadius: 2 },
+  /* Flush with the end of a full bar, split off by a hairline of page ink: the
+     category ladder runs almost to white, so a brighter block alone would vanish
+     on the brightest categories and the gap is what keeps it legible on all ten. */
+  trackOver: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 13,
+    backgroundColor: color.mark,
+    borderLeftWidth: 1.5,
+    borderLeftColor: color.ink,
+  },
   nextOut: {
     borderRadius: radius.tile,
     paddingVertical: 16,
