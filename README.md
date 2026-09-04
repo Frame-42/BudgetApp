@@ -3,7 +3,6 @@
 React Native (Expo) implementation of the **iPhone Budgeting App** design canvas —
 five screens, monochrome graphite, colour spent only on status.
 
-Imported from the Claude Design project `Budget Home.dc.html` → `Phone.dc.html`.
 
 ## Run
 
