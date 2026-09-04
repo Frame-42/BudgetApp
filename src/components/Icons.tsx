@@ -90,3 +90,22 @@ export const SearchIcon = ({ color, size }: IconProps) => (
     <Path d="M11.6 11.6 15 15" stroke={color} strokeWidth={1.4} strokeLinecap="round" />
   </Frame>
 );
+
+/** An arrow dropping into an open tray: bringing transactions in from a file. */
+export const ImportIcon = ({ color, size }: IconProps) => (
+  <Frame size={size}>
+    <Path
+      d="M9 2.9v7.4M6.2 7.5 9 10.3l2.8-2.8"
+      stroke={color}
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M3.3 11.6v2.3a1 1 0 0 0 1 1h9.4a1 1 0 0 0 1-1v-2.3"
+      stroke={color}
+      strokeWidth={1.4}
+      strokeLinecap="round"
+    />
+  </Frame>
+);

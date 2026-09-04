@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Card, Eyebrow, T, TextField } from './primitives';
 import { CategoryChips } from './CategoryChips';
 import { Keypad } from './Keypad';
 import { Sheet } from './Sheet';
+import { morph } from '../motion';
 import { tapDone, tapSelect, tapWarn } from '../haptics';
 import {
   amountLabel,
@@ -17,15 +18,6 @@ import { color, radius, w } from '../theme';
 
 /** How long an armed Delete waits for its second tap before standing down. */
 const ARM_TIMEOUT_MS = 4000;
-
-/** The same 280ms ease the tab bar uses, so the sheet's morph matches the app. */
-const morph = () =>
-  LayoutAnimation.configureNext({
-    duration: 280,
-    create: { type: 'easeInEaseOut', property: 'opacity' },
-    update: { type: 'easeInEaseOut' },
-    delete: { type: 'easeInEaseOut', property: 'opacity' },
-  });
 
 /**
  * What a held Spend row opens: the two actions, and — without a second modal —
