@@ -84,8 +84,12 @@ export async function loadHome(db: SQLiteDatabase, at: number = Date.now()): Pro
     dailyPaceCents: Math.round(spentCents / Math.max(1, dayOfMonth)),
     dailyAvailableCents: Math.round(leftToSpendCents / Math.max(1, daysRemaining)),
     week,
-    // The design shows the first three of the user's categories, in their order.
-    categories: categories.slice(0, 3).map((c) => {
+    // Every live category, in the user's order. The canvas showed only the first
+    // three, but onboarding now asks for a limit per category, and a card that
+    // lists three of them makes the other seven look like they were dropped.
+    // `listCategories` already filters the archived ones, so this is exactly the
+    // set the user kept.
+    categories: categories.map((c) => {
       const spent = spentByCategory.get(c.id) ?? 0;
       const limit = limits.get(c.id) ?? 0;
       return {

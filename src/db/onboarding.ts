@@ -12,6 +12,12 @@ export type OnboardingInput = {
   monthlyBudgetCents: number;
   /** Seeded categories the user kept; everything else is archived. */
   keepCategoryIds: string[];
+  /**
+   * A limit per kept category, from the flow's last step. Absent means the
+   * category has no limit — which is not the same as a limit of zero, so the
+   * screen leaves a blank row out rather than sending 0.
+   */
+  categoryLimitsCents: Record<string, number>;
   weeklyRecap: boolean;
 };
 
@@ -48,11 +54,21 @@ export async function runOnboarding(db: SQLiteDatabase, input: OnboardingInput):
 
     // This month only: limits carry forward on their own, and back-dating would
     // hand the Trends bars a budget those months never had.
+    const month = monthKey(Date.now());
     await setBudget(db, {
-      month: monthKey(Date.now()),
+      month,
       category_id: null,
       limit_cents: input.monthlyBudgetCents,
     });
+
+    // Same month, same reason. Guarded on `keep` as well as on the figure: going
+    // back a step to deselect a category leaves its typed limit behind in the
+    // screen's state, and an archived category with a budget row would show up
+    // in nothing but the outbox.
+    for (const [categoryId, limitCents] of Object.entries(input.categoryLimitsCents)) {
+      if (!keep.has(categoryId) || limitCents <= 0) continue;
+      await setBudget(db, { month, category_id: categoryId, limit_cents: limitCents });
+    }
 
     // The design never asks for a balance, so Checking keeps the seed's opening
     // figure of zero. Balances are derived, so there is nothing else to store.
