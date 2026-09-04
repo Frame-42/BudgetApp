@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 import { color, w } from '../theme';
 import { T } from './primitives';
@@ -98,47 +98,112 @@ export function LegendRule({ dashed }: { dashed?: boolean }) {
 }
 
 /** Trends — "Where it goes": five arcs of one grey, stepped down in alpha. */
-const DONUT_CIRCUMFERENCE = 2 * Math.PI * 44;
+const DONUT_RADIUS = 44;
+const DONUT_STROKE = 13;
+
+/** How far a picked arc steps out of the ring. */
+const DONUT_POP = 11;
+
+/** Wide enough for a raised arc to clear the ring and still sit in its frame. */
+const DONUT_BOX = 2 * (DONUT_RADIUS + DONUT_POP + DONUT_STROKE / 2) + 6;
+const DONUT_MID = DONUT_BOX / 2;
 
 export function SplitDonut({
   shares,
   children,
+  onPressShare,
 }: {
-  shares: { alpha: number; percent: number }[];
+  shares: { alpha: number; percent: number; popped?: boolean }[];
   children: React.ReactNode;
+  /** Makes the arcs themselves the control, by index into `shares`. */
+  onPressShare?: (index: number) => void;
 }) {
-  // Each arc starts where the previous one ended; a negative dash offset walks
-  // the pattern forward around the ring.
+  // Each arc starts where the previous one ended, so the walk is kept as a
+  // fraction of the turn: a raised arc rides a longer circumference and would
+  // otherwise fall out of step with the ones beside it.
   let consumed = 0;
-  const segments = shares.map((share) => {
-    const dash = (share.percent / 100) * DONUT_CIRCUMFERENCE;
-    const segment = { alpha: share.alpha, dash, offset: -consumed };
-    consumed += dash;
+  const segments = shares.map((share, i) => {
+    const fraction = share.percent / 100;
+    const radius = DONUT_RADIUS + (share.popped ? DONUT_POP : 0);
+    const circumference = 2 * Math.PI * radius;
+    const segment = {
+      key: i,
+      alpha: share.alpha,
+      popped: share.popped ?? false,
+      radius,
+      dash: fraction * circumference,
+      rest: (1 - fraction) * circumference,
+      offset: -consumed * circumference,
+    };
+    consumed += fraction;
     return segment;
   });
 
+  /**
+   * Which arc a touch landed on, worked out from the angle rather than left to
+   * the SVG: a dashed stroke is one circle wearing five coats of paint, so its
+   * own hit test cannot tell the arcs apart.
+   */
+  const arcAt = (x: number, y: number): number | null => {
+    const dx = x - DONUT_MID;
+    const dy = y - DONUT_MID;
+    const distance = Math.hypot(dx, dy);
+    const inner = DONUT_RADIUS - DONUT_STROKE / 2 - 4;
+    const outer = DONUT_RADIUS + DONUT_POP + DONUT_STROKE / 2 + 4;
+    if (distance < inner || distance > outer) return null;
+    // Clockwise from twelve, matching the -90° turn the arcs are drawn under.
+    const turn = ((Math.atan2(dx, -dy) / (2 * Math.PI)) + 1) % 1;
+    let walked = 0;
+    for (let i = 0; i < shares.length; i++) {
+      walked += shares[i].percent / 100;
+      if (turn < walked) return i;
+    }
+    // Rounded percentages can leave a sliver past the last arc; it is still its.
+    return shares.length ? shares.length - 1 : null;
+  };
+
   return (
-    <View style={styles.donut}>
-      <Svg width={118} height={118} viewBox="0 0 118 118" fill="none">
-        <G rotation={-90} origin="59, 59">
-          <Circle cx={59} cy={59} r={44} stroke={w(0.05)} strokeWidth={13} fill="none" />
-          {segments.map((s, i) => (
+    <Pressable
+      disabled={!onPressShare}
+      /* The legend beside it carries the same choices, labelled. */
+      accessible={false}
+      importantForAccessibility="no"
+      onPress={(event) => {
+        const index = arcAt(event.nativeEvent.locationX, event.nativeEvent.locationY);
+        if (index !== null) onPressShare?.(index);
+      }}
+      style={styles.donut}
+    >
+      <Svg width={DONUT_BOX} height={DONUT_BOX} viewBox={`0 0 ${DONUT_BOX} ${DONUT_BOX}`} fill="none">
+        <G rotation={-90} origin={`${DONUT_MID}, ${DONUT_MID}`}>
+          <Circle
+            cx={DONUT_MID}
+            cy={DONUT_MID}
+            r={DONUT_RADIUS}
+            stroke={w(0.05)}
+            strokeWidth={DONUT_STROKE}
+            fill="none"
+          />
+          {/* Raised arcs last, so their ends sit over the ring they left. */}
+          {[...segments].sort((a, b) => Number(a.popped) - Number(b.popped)).map((s) => (
             <Circle
-              key={i}
-              cx={59}
-              cy={59}
-              r={44}
+              key={s.key}
+              cx={DONUT_MID}
+              cy={DONUT_MID}
+              r={s.radius}
               fill="none"
               stroke={`rgba(233,235,242,${s.alpha})`}
-              strokeWidth={13}
-              strokeDasharray={`${s.dash} ${DONUT_CIRCUMFERENCE - s.dash}`}
+              strokeWidth={DONUT_STROKE}
+              strokeDasharray={`${s.dash} ${s.rest}`}
               strokeDashoffset={s.offset}
             />
           ))}
         </G>
       </Svg>
-      <View style={styles.donutCenter}>{children}</View>
-    </View>
+      <View pointerEvents="none" style={styles.donutCenter}>
+        {children}
+      </View>
+    </Pressable>
   );
 }
 
@@ -147,7 +212,7 @@ const fill = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } as c
 const styles = StyleSheet.create({
   ring74: { width: 74, height: 74 },
   ringCenter: { ...fill, alignItems: 'center', justifyContent: 'center' },
-  donut: { width: 118, height: 118 },
+  donut: { width: DONUT_BOX, height: DONUT_BOX },
   donutCenter: {
     ...fill,
     alignItems: 'center',

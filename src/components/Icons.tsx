@@ -82,3 +82,11 @@ export const YouIcon = ({ color, size }: IconProps) => (
     />
   </Frame>
 );
+
+/** Search: the only icon that isn't a tab or a caret. */
+export const SearchIcon = ({ color, size }: IconProps) => (
+  <Frame size={size}>
+    <Circle cx={8.1} cy={8.1} r={4.6} stroke={color} strokeWidth={1.4} />
+    <Path d="M11.6 11.6 15 15" stroke={color} strokeWidth={1.4} strokeLinecap="round" />
+  </Frame>
+);
