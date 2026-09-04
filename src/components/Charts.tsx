@@ -141,11 +141,17 @@ export function SplitDonut({
   // in the data rather than as a join.
   const whole = shares.length < 2;
 
+  // Percentages are rounded before they get here, so they rarely add up to
+  // exactly 100 — dividing by their own sum instead of a flat 100 keeps the
+  // arcs tiling the full circle, so the gap where the ring wraps back to the
+  // start isn't left wider or narrower than the rest.
+  const totalPercent = shares.reduce((sum, share) => sum + share.percent, 0) || 1;
+
   // Each arc starts where the previous one ended, so the walk is kept as a
   // fraction of the turn and only the drawn dash is trimmed back.
   let consumed = 0;
   const segments = shares.map((share, i) => {
-    const fraction = share.percent / 100;
+    const fraction = share.percent / totalPercent;
     const popped = share.popped ?? false;
     const stroke = DONUT_STROKE + (popped ? DONUT_EXPAND : 0);
     const span = fraction * DONUT_CIRC;
@@ -203,14 +209,6 @@ export function SplitDonut({
     >
       <Svg width={DONUT_BOX} height={DONUT_BOX} viewBox={`0 0 ${DONUT_BOX} ${DONUT_BOX}`} fill="none">
         <G rotation={-90} origin={`${DONUT_MID}, ${DONUT_MID}`}>
-          <Circle
-            cx={DONUT_MID}
-            cy={DONUT_MID}
-            r={DONUT_RADIUS}
-            stroke={w(0.05)}
-            strokeWidth={DONUT_STROKE}
-            fill="none"
-          />
           {/* Thickened arcs last, so their ends sit over the ones beside them. */}
           {[...segments].sort((a, b) => Number(a.popped) - Number(b.popped)).map((s) => (
             <Circle
