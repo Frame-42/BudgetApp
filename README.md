@@ -72,5 +72,17 @@ migration:
 implement; `src/sync/local.ts` is the no-op default. Nothing above the repository
 layer knows or cares which backend is in use.
 
-In `__DEV__`, the last row of the You screen's settings list resets and reseeds
-the database.
+## Developer tools
+
+There's one app, not a separate "dev" build — a runtime toggle instead. In a
+`__DEV__` run (the normal `expo start` workflow), the You screen's settings list
+gets a "Developer mode" row, on by default:
+
+- **On** — a *Dev tools* card appears below Settings with "Reset to first run"
+  and "Load sample data" (`src/devtools/DevToolsPanel.tsx`).
+- **Off** — that card disappears and the screen looks exactly like the finished
+  product, no rebuild needed.
+
+The flag lives in `src/devtools/DevToolsContext.tsx` and resets to on each fresh
+dev session. A real production build never shows the row at all — `__DEV__` is
+false there, so the toggle and the tools it guards don't exist.

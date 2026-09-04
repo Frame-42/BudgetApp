@@ -20,6 +20,7 @@ import { TrendsScreen } from './src/screens/TrendsScreen';
 import { YouScreen } from './src/screens/YouScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { BudgetProvider, useBudget } from './src/state/BudgetProvider';
+import { DevToolsProvider } from './src/devtools/DevToolsContext';
 import { useTransactionFeed } from './src/state/useTransactionFeed';
 import { useTrendsView } from './src/state/useTrendsView';
 import { parseAmountToCents } from './src/format';
@@ -196,9 +197,11 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <BudgetProvider>
-        <Phone />
-      </BudgetProvider>
+      <DevToolsProvider>
+        <BudgetProvider>
+          <Phone />
+        </BudgetProvider>
+      </DevToolsProvider>
     </SafeAreaProvider>
   );
 }
