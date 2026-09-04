@@ -9,9 +9,10 @@ import { tapSelect } from '../haptics';
 import type { YouData } from '../queries/you';
 import { figure } from '../format';
 import { color, fg, radius, w } from '../theme';
+import { useDevTools } from '../devtools/DevToolsContext';
+import { DevToolsPanel } from '../devtools/DevToolsPanel';
 
-/** A settings row; `onPress` is what makes it tappable, since more than one
- *  development row now shares the same DEV value. */
+/** A settings row; `onPress` is what makes it tappable. */
 type Row = { name: string; value: string; onPress?: () => void };
 
 /** 05 — You: accounts and settings. */
@@ -31,12 +32,18 @@ export function YouScreen({
   onLoadSample: () => void;
 }) {
   const [importOpen, setImportOpen] = useState(false);
+  const { enabled: devToolsEnabled, setEnabled: setDevToolsEnabled } = useDevTools();
 
+  /* The toggle itself only exists in a __DEV__ build — same guarantee a real
+     production bundle already had, just explicit now instead of implicit. */
   const rows: Row[] = __DEV__
     ? [
         ...data.settings,
-        { name: 'Reset to first run', value: 'DEV', onPress: onReset },
-        { name: 'Load sample data', value: 'DEV', onPress: onLoadSample },
+        {
+          name: 'Developer mode',
+          value: devToolsEnabled ? 'ON' : 'OFF',
+          onPress: () => setDevToolsEnabled(!devToolsEnabled),
+        },
       ]
     : data.settings;
 
@@ -117,6 +124,10 @@ export function YouScreen({
           );
         })}
       </Card>
+
+      {__DEV__ && devToolsEnabled ? (
+        <DevToolsPanel onReset={onReset} onLoadSample={onLoadSample} />
+      ) : null}
 
       {/* An action, not a setting — so a tile of its own rather than a fifth
           row in the card above, where the right-hand slot means "current value". */}

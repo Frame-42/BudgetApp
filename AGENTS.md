@@ -44,6 +44,7 @@ it, and prefer `npx expo install` over `npm install` so versions match the SDK.
 | `src/queries/` | Derived figures per screen; pure, rows in / numbers out |
 | `src/import/` | Bank-export reading: `csv.ts`, `rules.ts` (MCC + merchant names), `plan.ts` |
 | `src/state/BudgetProvider.tsx` | Opens the DB, recomputes on every change |
+| `src/devtools/` | `DevToolsContext.tsx` (the runtime on/off flag), `DevToolsPanel.tsx` (the dev-only actions card) |
 | `src/sync/` | The `SyncEngine` interface and its no-op default |
 | `src/format.ts`, `src/time.ts` | Money and date formatting |
 
@@ -58,7 +59,17 @@ It is a port of the `Onboarding Phone.dc.html` canvas — four steps, and the ca
 never asks for a balance, so Checking keeps its opening figure of zero. The gate is `sync_meta.onboarded_at`
 — local-only and never synced, so `resetDatabase()` clears it and a second device
 onboards again. `src/db/demo.ts` holds the months of history the charts need; it is
-reachable only from the `__DEV__` rows on the You screen.
+reachable only from `src/devtools/DevToolsPanel.tsx`.
+
+**There is one app, not two builds, for "with tools" vs "finished product."**
+`src/devtools/DevToolsContext.tsx` holds a runtime `enabled` flag, seeded from
+`__DEV__` and flippable from a "Developer mode" row that only exists when
+`__DEV__` is true — so a real production bundle never grows the row or the flag,
+zero extra work. While developing, toggling that row off in the You screen hides
+`DevToolsPanel` (Reset to first run / Load sample data) and makes the running app
+look exactly like the shipped product, with no rebuild; toggling it back on
+restores the tools. New dev-only actions belong in `DevToolsPanel.tsx`'s `tools`
+array, not as another ad-hoc `__DEV__` check in a screen.
 
 **Deselecting a category archives it.** `archiveCategory`, never a delete —
 `listCategories` filters `archived = 0` so it leaves the chips, while `queries/trends.ts`
