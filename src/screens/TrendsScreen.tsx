@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
-import { LegendRule, PaceChart, SplitDonut } from '../components/Charts';
+import { dimAlpha, LegendRule, PaceChart, SplitDonut } from '../components/Charts';
 import { BulbIcon, CaretIcon } from '../components/Icons';
 import { Amount, Card, Divider, Eyebrow, HeroCard, StatusDot, T } from '../components/primitives';
 import { TREND_SPANS, type Share, type TrendSpan, type TrendsBundle, type TrendsData } from '../queries/trends';
@@ -80,10 +80,11 @@ export function TrendsScreen({
   const narrowed = categoryIds.length > 0;
   const isOn = (share: Share) => share.categoryIds.every((id) => categoryIds.includes(id));
   /* The ring keeps the whole picture rather than redrawing as the selection
-     alone: picked arcs step out of it, the rest dim with their legend rows. */
+     alone: picked arcs keep their own brightness and thicken slightly, the rest
+     dim with their legend rows. */
   const ring = narrowed
     ? split.map((share) =>
-        isOn(share) ? { ...share, popped: true } : { ...share, alpha: share.alpha * 0.3 },
+        isOn(share) ? { ...share, popped: true } : { ...share, alpha: dimAlpha(share.alpha) },
       )
     : split;
 
@@ -378,7 +379,7 @@ export function TrendsScreen({
                       style={[
                         styles.swatch,
                         {
-                          backgroundColor: `rgba(233,235,242,${dim ? share.alpha * 0.3 : share.alpha})`,
+                          backgroundColor: `rgba(233,235,242,${dim ? dimAlpha(share.alpha) : share.alpha})`,
                         },
                       ]}
                     />

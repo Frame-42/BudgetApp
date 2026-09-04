@@ -98,15 +98,34 @@ export function LegendRule({ dashed }: { dashed?: boolean }) {
 }
 
 /** Trends — "Where it goes": five arcs of one grey, stepped down in alpha. */
-const DONUT_RADIUS = 44;
+const DONUT_RADIUS = 48;
 const DONUT_STROKE = 13;
 
-/** How far a picked arc steps out of the ring. */
-const DONUT_POP = 11;
+/** How much a picked arc thickens — it grows in place rather than stepping out. */
+const DONUT_EXPAND = 2;
 
-/** Wide enough for a raised arc to clear the ring and still sit in its frame. */
-const DONUT_BOX = 2 * (DONUT_RADIUS + DONUT_POP + DONUT_STROKE / 2) + 6;
+/** The break between two arcs, measured as arc length on the ring. */
+const DONUT_GAP = 5;
+
+/** Wide enough for the thickest arc to sit inside its frame. */
+const DONUT_BOX = 2 * (DONUT_RADIUS + (DONUT_STROKE + DONUT_EXPAND) / 2) + 6;
 const DONUT_MID = DONUT_BOX / 2;
+const DONUT_CIRC = 2 * Math.PI * DONUT_RADIUS;
+
+/** The one grey every arc is painted in; only its alpha changes. */
+const ARC_RGB = '233,235,242';
+
+/**
+ * What an arc that lost the selection steps back to. A picked arc keeps its own
+ * rung on the category ladder, and the lowest of those is .16 — so the whole
+ * dimmed run is scaled to land under it, the top category included. Anything
+ * shallower and dimming the 45% category still leaves it brighter than a picked
+ * 18% one, and the ring points at the wrong answer. Scaling rather than
+ * clamping keeps the dimmed arcs in their own order, near the ring's track.
+ */
+export function dimAlpha(alpha: number): number {
+  return alpha * 0.065;
+}
 
 export function SplitDonut({
   shares,
@@ -118,22 +137,30 @@ export function SplitDonut({
   /** Makes the arcs themselves the control, by index into `shares`. */
   onPressShare?: (index: number) => void;
 }) {
+  // One arc is the whole ring, and a ring with a bite out of it reads as a gap
+  // in the data rather than as a join.
+  const whole = shares.length < 2;
+
   // Each arc starts where the previous one ended, so the walk is kept as a
-  // fraction of the turn: a raised arc rides a longer circumference and would
-  // otherwise fall out of step with the ones beside it.
+  // fraction of the turn and only the drawn dash is trimmed back.
   let consumed = 0;
   const segments = shares.map((share, i) => {
     const fraction = share.percent / 100;
-    const radius = DONUT_RADIUS + (share.popped ? DONUT_POP : 0);
-    const circumference = 2 * Math.PI * radius;
+    const popped = share.popped ?? false;
+    const stroke = DONUT_STROKE + (popped ? DONUT_EXPAND : 0);
+    const span = fraction * DONUT_CIRC;
+    // A round cap hangs half a stroke past each end of the dash, so the gap is
+    // cut out of the dash together with both caps, and what is left is centred
+    // on the share it stands for.
+    const dash = whole ? span : Math.max(span - DONUT_GAP - stroke, 0.6);
     const segment = {
       key: i,
       alpha: share.alpha,
-      popped: share.popped ?? false,
-      radius,
-      dash: fraction * circumference,
-      rest: (1 - fraction) * circumference,
-      offset: -consumed * circumference,
+      popped,
+      stroke,
+      dash,
+      rest: DONUT_CIRC - dash,
+      offset: -(consumed * DONUT_CIRC + (span - dash) / 2),
     };
     consumed += fraction;
     return segment;
@@ -142,15 +169,15 @@ export function SplitDonut({
   /**
    * Which arc a touch landed on, worked out from the angle rather than left to
    * the SVG: a dashed stroke is one circle wearing five coats of paint, so its
-   * own hit test cannot tell the arcs apart.
+   * own hit test cannot tell the arcs apart. The gaps stay live, and fall to
+   * the arc the angle sits in.
    */
   const arcAt = (x: number, y: number): number | null => {
     const dx = x - DONUT_MID;
     const dy = y - DONUT_MID;
     const distance = Math.hypot(dx, dy);
-    const inner = DONUT_RADIUS - DONUT_STROKE / 2 - 4;
-    const outer = DONUT_RADIUS + DONUT_POP + DONUT_STROKE / 2 + 4;
-    if (distance < inner || distance > outer) return null;
+    const reach = (DONUT_STROKE + DONUT_EXPAND) / 2 + 4;
+    if (distance < DONUT_RADIUS - reach || distance > DONUT_RADIUS + reach) return null;
     // Clockwise from twelve, matching the -90° turn the arcs are drawn under.
     const turn = ((Math.atan2(dx, -dy) / (2 * Math.PI)) + 1) % 1;
     let walked = 0;
@@ -184,16 +211,17 @@ export function SplitDonut({
             strokeWidth={DONUT_STROKE}
             fill="none"
           />
-          {/* Raised arcs last, so their ends sit over the ring they left. */}
+          {/* Thickened arcs last, so their ends sit over the ones beside them. */}
           {[...segments].sort((a, b) => Number(a.popped) - Number(b.popped)).map((s) => (
             <Circle
               key={s.key}
               cx={DONUT_MID}
               cy={DONUT_MID}
-              r={s.radius}
+              r={DONUT_RADIUS}
               fill="none"
-              stroke={`rgba(233,235,242,${s.alpha})`}
-              strokeWidth={DONUT_STROKE}
+              stroke={`rgba(${ARC_RGB},${s.alpha})`}
+              strokeWidth={s.stroke}
+              strokeLinecap="round"
               strokeDasharray={`${s.dash} ${s.rest}`}
               strokeDashoffset={s.offset}
             />
