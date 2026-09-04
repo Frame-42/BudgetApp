@@ -7,8 +7,6 @@ import { runOnboarding, type OnboardingInput } from '../db/onboarding';
 import { createTransaction, deleteTransaction, editTransaction } from '../repo/transactions';
 import { sanitizeMerchant } from '../format';
 import { loadHome, type HomeData } from '../queries/home';
-import { loadSpend, type SpendData } from '../queries/spend';
-import { loadTrends, type TrendsBundle } from '../queries/trends';
 import { loadYou, type YouData } from '../queries/you';
 import { loadAddOptions, type AddOptions } from '../queries/add';
 import { buildImportPlan, type ImportPlan } from '../import/plan';
@@ -21,9 +19,6 @@ const MONTH_PICKED_KEY = 'trends_month_picked_at';
 
 export type Snapshot = {
   home: HomeData;
-  spend: SpendData;
-  /** Every span the Trends screen can switch to. */
-  trends: TrendsBundle;
   you: YouData;
   add: AddOptions;
   onboarded: boolean;
@@ -71,10 +66,11 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   const load = useCallback(async () => {
     const db = await getDb();
-    const [home, spend, trends, you, add, onboardedAt, pickedAt] = await Promise.all([
+    // Spend and Trends are absent on purpose: both take query arguments now — a
+    // filtered page, a category selection — so they own their own state in
+    // `useTransactionFeed` and `useTrendsView` rather than riding this snapshot.
+    const [home, you, add, onboardedAt, pickedAt] = await Promise.all([
       loadHome(db),
-      loadSpend(db),
-      loadTrends(db),
       loadYou(db),
       loadAddOptions(db),
       getMeta(db, ONBOARDED_KEY),
@@ -84,8 +80,6 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     // be decided, so Home never flashes before onboarding mounts.
     setData({
       home,
-      spend,
-      trends,
       you,
       add,
       onboarded: onboardedAt !== null,

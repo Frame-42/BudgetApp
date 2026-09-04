@@ -13,7 +13,7 @@ import {
   parseAmountToCents,
   sanitizeMerchant,
 } from '../format';
-import type { SpendItem } from '../queries/spend';
+import type { TransactionItem } from '../queries/transactions';
 import { color, radius, w } from '../theme';
 
 /** How long an armed Delete waits for its second tap before standing down. */
@@ -30,7 +30,7 @@ export function SpendItemSheet({
   onSave,
   onDelete,
 }: {
-  item: SpendItem | null;
+  item: TransactionItem | null;
   categories: { id: string; name: string }[];
   onClose: () => void;
   onSave: (input: {

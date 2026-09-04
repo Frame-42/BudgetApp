@@ -20,9 +20,9 @@ via `@expo-google-fonts`.
 | # | Screen | File |
 |---|--------|------|
 | 01 | Home — on track at a glance | `src/screens/HomeScreen.tsx` |
-| 02 | Spend — where it went | `src/screens/SpendScreen.tsx` |
+| 02 | Spend — every transaction: month stepper, search, category filters | `src/screens/SpendScreen.tsx` |
 | 03 | Add — expense entry (live keypad) | `src/screens/AddScreen.tsx` |
-| 04 | Trends — six-month shape | `src/screens/TrendsScreen.tsx` |
+| 04 | Trends — 3/6/12-month shape, narrowable by category | `src/screens/TrendsScreen.tsx` |
 | 05 | You — accounts and settings | `src/screens/YouScreen.tsx` |
 
 ## Layout
@@ -47,6 +47,11 @@ Everything on screen is computed from SQLite (`expo-sqlite`), on device.
 - `src/queries/` — the derived figures each screen shows, as pure functions.
 - `src/state/BudgetProvider.tsx` — opens the database once and recomputes every
   screen's figures whenever a row changes.
+- `src/state/useTransactionFeed.ts`, `src/state/useTrendsView.ts` — the two
+  exceptions: Spend's list is filtered and paged and Trends narrows by category,
+  so each holds its own query arguments and subscribes to the change events
+  itself. Trends hands its scope — period plus categories — to the Spend list
+  through `feed.focus()`, which is how the two screens stay one filter.
 - `src/format.ts` — money is stored as integer cents and formatted only here.
 
 Money is signed: negative is out, positive is in. Account balances are derived

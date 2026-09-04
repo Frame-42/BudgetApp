@@ -97,6 +97,30 @@ updating. This has already been hit once.
 crops Geist's ascenders on iOS. `primitives.tsx` clamps everything to
 `size * MIN_LEADING` (1.15); leave the clamp in place.
 
+**Spend and Trends sit outside the snapshot.** Both take query arguments — a
+period, a search term and a set of categories for Spend; a set of categories for
+Trends — which the provider's argument-free "recompute everything" shape cannot
+express. They own `src/state/useTransactionFeed.ts` and `src/state/useTrendsView.ts`,
+each with its own debounced database subscription and a generation guard so a
+slow wide query cannot land after the narrow one that replaced it. Deliberate;
+don't tidy them back into the provider.
+
+**The two screens share one filter.** A Trends scope — the picked month or the
+span, plus the selected categories — is handed to Spend by `feed.focus()` from
+`App.tsx`, which is the whole of the navigation. So Spend's period is a
+`{month|range|all}` union and `TransactionFilter` is a plain `from`/`to` window:
+a month is just a range, and the query layer no longer knows what a month is.
+
+**Trends narrows its figures, never its donut.** The category predicate goes
+inside the aggregate sums rather than into a `WHERE`, because a month's
+`present` flag means *nothing was recorded*, not *nothing in these categories* —
+filter the count and empty months turn grey and unpickable. The split query
+stays unfiltered too, or selecting a category would redraw the ring as 100% of
+itself with no way to add a second; selection is drawn by dimming instead.
+
+**Spend scrolls itself.** A `SectionList` cannot nest in `App.tsx`'s shared
+`ScrollView`, so `SCROLLS[tab]` hands Spend the insets and gets out of the way.
+
 **The importer decides nothing twice.** `transactions.external_id` (migration v2)
 holds the bank's own id, and a row whose id is already present is skipped
 silently — that is what makes re-importing an overlapping export safe. It is
@@ -119,7 +143,6 @@ unmapped code goes to review, where one answer teaches the memory for good;
 filing it as Other would look like a decision while being the absence of one. The
 groups in `MCC_CATEGORIES` are flattened into a Map, so a code listed twice lets
 the last group silently win — 5813 was in both Dining and Leisure once already.
-
 **Colour is reserved for status.** The palette is white-at-an-alpha over
 graphite, plus the two accent tints in `theme.ts` for on-track status and income.
 Introducing a new hue is a design decision, not a styling one.

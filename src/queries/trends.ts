@@ -1,7 +1,14 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { MONTH_ABBR, addMonths, daysInMonth, monthKey } from '../time';
 
-export type Share = { name: string; percent: number; alpha: number; totalCents: number };
+export type Share = {
+  name: string;
+  percent: number;
+  alpha: number;
+  totalCents: number;
+  /** Usually one id; the rolled-up "Other" row carries every category it folds in. */
+  categoryIds: string[];
+};
 
 /** How far back the screen looks: a quarter, a half year, or a year. */
 export const TREND_SPANS = [3, 6, 12] as const;
@@ -16,6 +23,8 @@ export type MonthStat = {
   key: string;
   label: string;
   totalCents: number;
+  /** Rows behind the figure — what the "see transactions" strip names. */
+  matchCount: number;
   /** Against the span's peak, for the bar's height. */
   fraction: number;
   /** The in-progress month. */
@@ -53,6 +62,8 @@ export type TrendsData = {
   /** How many months this view covers. */
   span: TrendSpan;
   monthlyAverageCents: number;
+  /** Rows across the whole span, for the hand-off when no month is picked. */
+  matchCount: number;
   /** Percentage change of the completed months' recent half against the half before it. */
   deltaPercent: number | null;
   months: MonthStat[];
@@ -74,32 +85,39 @@ export type TrendsData = {
 /** Every span, ready to switch between without going back to the database. */
 export type TrendsBundle = Record<TrendSpan, TrendsData>;
 
+type SplitRow = { id: string; name: string; alpha: number; total: number };
+
 /** Top four categories by spend, with the tail rolled into "Other". */
-function toSplit(rows: { name: string; alpha: number; total: number }[]): Share[] {
+function toSplit(rows: SplitRow[]): Share[] {
   const ranked = [...rows].sort((a, b) => b.total - a.total);
   const total = Math.max(1, ranked.reduce((sum, r) => sum + r.total, 0));
-  const shares = ranked.slice(0, 4).map((r) => ({
+  const shares: Share[] = ranked.slice(0, 4).map((r) => ({
     name: r.name,
     percent: Math.round((r.total / total) * 100),
     alpha: r.alpha,
     totalCents: r.total,
+    categoryIds: [r.id],
   }));
 
-  const restTotal = ranked.slice(4).reduce((sum, r) => sum + r.total, 0);
+  const rest = ranked.slice(4);
+  const restTotal = rest.reduce((sum, r) => sum + r.total, 0);
   if (restTotal > 0) {
     // One of the seven categories is itself called "Other". When it lands in the
     // top four the tail folds into it, rather than sitting beside it as a second
-    // slice of the same name.
+    // slice of the same name. Either way the row carries every id it stands for,
+    // so selecting it selects the whole tail.
     const named = shares.find((share) => share.name === 'Other');
     if (named) {
       named.totalCents += restTotal;
       named.percent = Math.round((named.totalCents / total) * 100);
+      named.categoryIds = [...named.categoryIds, ...rest.map((r) => r.id)];
     } else {
       shares.push({
         name: 'Other',
         percent: Math.round((restTotal / total) * 100),
         alpha: 0.16,
         totalCents: restTotal,
+        categoryIds: rest.map((r) => r.id),
       });
     }
   }
@@ -111,22 +129,40 @@ function toSplit(rows: { name: string; alpha: number; total: number }[]): Share[
  * stand on its own. The rows are read once over the longest span and every view
  * is built from them, so switching span costs nothing.
  */
-export async function loadTrends(db: SQLiteDatabase, at: number = Date.now()): Promise<TrendsBundle> {
+export async function loadTrends(
+  db: SQLiteDatabase,
+  at: number = Date.now(),
+  categoryIds: string[] = [],
+): Promise<TrendsBundle> {
+  /*
+   * Every figure narrows to the chosen categories, but a month's *presence*
+   * must not: a month with no Groceries is a month with no Groceries, not the
+   * missing data `present` stands for. So the predicate goes inside the sums
+   * rather than into the WHERE of the query that counts entries.
+   */
+  const chosen = categoryIds.length ? `category_id IN (${categoryIds.map(() => '?').join(', ')})` : '1';
   /** One month further back than the widest row shows, so its oldest bar has a pace line to sit over. */
   const withLeadIn = addMonths(at, -WIDEST);
 
   // Counted over every transaction, not just spending, so a month that holds
   // only income still counts as a month that was recorded.
-  const rows = await db.getAllAsync<{ month: string; entries: number; total: number }>(
+  const rows = await db.getAllAsync<{
+    month: string;
+    entries: number;
+    matches: number;
+    total: number;
+  }>(
     `SELECT strftime('%Y-%m', occurred_at / 1000, 'unixepoch', 'localtime') AS month,
             COUNT(*) AS entries,
-            IFNULL(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents END), 0) AS total
+            SUM(CASE WHEN ${chosen} THEN 1 ELSE 0 END) AS matches,
+            IFNULL(SUM(CASE WHEN amount_cents < 0 AND ${chosen} THEN -amount_cents END), 0) AS total
        FROM transactions
       WHERE deleted_at IS NULL AND occurred_at >= ?
       GROUP BY month`,
-    [withLeadIn],
+    [...categoryIds, ...categoryIds, withLeadIn],
   );
   const totals = new Map(rows.map((r) => [r.month, r.total]));
+  const matches = new Map(rows.map((r) => [r.month, r.matches]));
   const recorded = new Set(rows.filter((r) => r.entries > 0).map((r) => r.month));
 
   // --- pace: every month's cumulative curve, in one pass ----------------------
@@ -135,9 +171,9 @@ export async function loadTrends(db: SQLiteDatabase, at: number = Date.now()): P
             CAST(strftime('%d', occurred_at / 1000, 'unixepoch', 'localtime') AS INTEGER) AS day,
             IFNULL(SUM(-amount_cents), 0) AS total
        FROM transactions
-      WHERE deleted_at IS NULL AND amount_cents < 0 AND occurred_at >= ?
+      WHERE deleted_at IS NULL AND amount_cents < 0 AND ${chosen} AND occurred_at >= ?
       GROUP BY month, day`,
-    [withLeadIn],
+    [...categoryIds, withLeadIn],
   );
   const byMonthDay = new Map<string, Map<number, number>>();
   for (const row of daily) {
@@ -157,16 +193,18 @@ export async function loadTrends(db: SQLiteDatabase, at: number = Date.now()): P
   };
 
   // --- where it goes, per month ----------------------------------------------
-  const splitRows = await db.getAllAsync<{ month: string; name: string; alpha: number; total: number }>(
+  /* Deliberately unfiltered: selecting a category must not redraw the donut as
+     100% of itself, or there would be no way to add a second. */
+  const splitRows = await db.getAllAsync<{ month: string } & SplitRow>(
     `SELECT strftime('%Y-%m', t.occurred_at / 1000, 'unixepoch', 'localtime') AS month,
-            c.name, c.color_alpha AS alpha, IFNULL(SUM(-t.amount_cents), 0) AS total
+            c.id, c.name, c.color_alpha AS alpha, IFNULL(SUM(-t.amount_cents), 0) AS total
        FROM transactions t
        JOIN categories c ON c.id = t.category_id
       WHERE t.deleted_at IS NULL AND t.amount_cents < 0 AND t.occurred_at >= ?
       GROUP BY month, c.id`,
     [withLeadIn],
   );
-  const splitByMonth = new Map<string, { name: string; alpha: number; total: number }[]>();
+  const splitByMonth = new Map<string, SplitRow[]>();
   for (const row of splitRows) {
     splitByMonth.set(row.month, [...(splitByMonth.get(row.month) ?? []), row]);
   }
@@ -180,6 +218,7 @@ export async function loadTrends(db: SQLiteDatabase, at: number = Date.now()): P
         key,
         label: MONTH_ABBR[new Date(stamp).getMonth()],
         totalCents: totals.get(key) ?? 0,
+        matchCount: matches.get(key) ?? 0,
         active,
         // The month in progress is present by definition, even before its first row.
         present: active || recorded.has(key),
@@ -237,12 +276,12 @@ export async function loadTrends(db: SQLiteDatabase, at: number = Date.now()): P
     );
     const averagePeak = Math.max(1, ...averageSeries);
 
-    const overall = new Map<string, { name: string; alpha: number; total: number }>();
+    const overall = new Map<string, SplitRow>();
     for (const month of shown) {
       for (const row of splitByMonth.get(month.key) ?? []) {
-        const seen = overall.get(row.name);
+        const seen = overall.get(row.id);
         if (seen) seen.total += row.total;
-        else overall.set(row.name, { name: row.name, alpha: row.alpha, total: row.total });
+        else overall.set(row.id, { ...row });
       }
     }
 
@@ -295,6 +334,7 @@ export async function loadTrends(db: SQLiteDatabase, at: number = Date.now()): P
     return {
       span,
       monthlyAverageCents,
+      matchCount: shown.reduce((sum, m) => sum + m.matchCount, 0),
       deltaPercent,
       months,
       averagePace: averageSeries.map((v) => v / averagePeak),

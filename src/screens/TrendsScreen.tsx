@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
-import { LegendRule, PaceChart, SplitDonut } from '../components/Charts';
+import { dimAlpha, LegendRule, PaceChart, SplitDonut } from '../components/Charts';
 import { BulbIcon, CaretIcon } from '../components/Icons';
 import { Amount, Card, Divider, Eyebrow, HeroCard, StatusDot, T } from '../components/primitives';
-import { TREND_SPANS, type TrendSpan, type TrendsBundle, type TrendsData } from '../queries/trends';
+import { TREND_SPANS, type Share, type TrendSpan, type TrendsBundle, type TrendsData } from '../queries/trends';
+import type { Period } from '../state/useTransactionFeed';
+import { addMonths, startOfNextMonth } from '../time';
 import { euroLabel, figure } from '../format';
 import { tapSelect } from '../haptics';
 import { color, fg, radius, w } from '../theme';
@@ -37,12 +39,20 @@ const DENSE_FROM = 12;
 export function TrendsScreen({
   data: bundle,
   showHint,
+  categoryIds,
+  onToggleCategories,
   onPickMonth,
+  onSeeTransactions,
 }: {
   data: TrendsBundle;
   /** The bars have never been used, so the screen still has to say they work. */
   showHint: boolean;
+  /** What every figure here is narrowed to; empty means every category. */
+  categoryIds: string[];
+  onToggleCategories: (ids: string[]) => void;
   onPickMonth: () => Promise<void>;
+  /** Hands this exact scope to the Spend list and goes there. */
+  onSeeTransactions: (scope: { period: Period; categoryIds: string[] }) => void;
 }) {
   const [span, setSpan] = useState<TrendSpan>(6);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -67,6 +77,55 @@ export function TrendsScreen({
           : null;
   const split = selected ? selected.split : data.split;
   const leader = split[0];
+  const narrowed = categoryIds.length > 0;
+  const isOn = (share: Share) => share.categoryIds.every((id) => categoryIds.includes(id));
+  /* The ring keeps the whole picture rather than redrawing as the selection
+     alone: picked arcs keep their own brightness and thicken slightly, the rest
+     dim with their legend rows. */
+  const ring = narrowed
+    ? split.map((share) =>
+        isOn(share) ? { ...share, popped: true } : { ...share, alpha: dimAlpha(share.alpha) },
+      )
+    : split;
+
+  /* What the selection is called, for the lines that have to name it. Shares
+     the donut's rollup, so picking "Other" reads as "Other" rather than a list. */
+  const chosen = split.filter(isOn);
+  const selectionLabel =
+    chosen.length === 0
+      ? null
+      : chosen.length === 1
+        ? chosen[0].name
+        : chosen.length === 2
+          ? `${chosen[0].name} and ${chosen[1].name}`
+          : `${chosen.length} categories`;
+  const selectionPercent = chosen.reduce((sum, share) => sum + share.percent, 0);
+  /* The header has a span switcher beside it, so names only fit one deep. */
+  const selectionTag =
+    chosen.length === 0 ? null : chosen.length === 1 ? chosen[0].name : `${chosen.length} categories`;
+
+  /* The arcs and their legend rows are the same control drawn twice. */
+  const chooseCategories = (ids: string[]) => {
+    tapSelect();
+    settle();
+    onToggleCategories(ids);
+  };
+
+  const matchCount = selected ? selected.matchCount : data.matchCount;
+  const handOff = () => {
+    tapSelect();
+    onSeeTransactions({
+      period: selected
+        ? { kind: 'month', start: monthStartOf(selected.key) }
+        : {
+            kind: 'range',
+            from: addMonths(Date.now(), -(span - 1)),
+            to: startOfNextMonth(Date.now()),
+            label: SPAN_LABEL[span],
+          },
+      categoryIds,
+    });
+  };
 
   /* The legend's row count and the pace line's length both change with the month. */
   const settle = () => LayoutAnimation.configureNext(EASE);
@@ -108,8 +167,10 @@ export function TrendsScreen({
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <View style={{ gap: 5 }}>
-          <Eyebrow size={10}>{SPAN_LABEL[span]}</Eyebrow>
+        <View style={{ gap: 5, flexShrink: 1 }}>
+          <Eyebrow size={10} numberOfLines={1}>
+            {selectionTag ? `${SPAN_LABEL[span]} · ${selectionTag}` : SPAN_LABEL[span]}
+          </Eyebrow>
           <T size={19} lineHeight={21} tracking={-0.01}>
             Trends
           </T>
@@ -291,7 +352,7 @@ export function TrendsScreen({
         <Card style={styles.splitCard}>
           <Eyebrow tracking={0.14}>Where it goes</Eyebrow>
           <View style={styles.splitRow}>
-            <SplitDonut shares={split}>
+            <SplitDonut shares={ring} onPressShare={(i) => chooseCategories(split[i].categoryIds)}>
               <T weight="light" size={19} lineHeight={19} tracking={-0.03}>
                 {figure(selected ? selected.totalCents : data.monthlyAverageCents)} €
               </T>
@@ -300,19 +361,37 @@ export function TrendsScreen({
               </Eyebrow>
             </SplitDonut>
             <View style={styles.legend}>
-              {split.map((share) => (
-                <View key={share.name} style={styles.legendItem}>
-                  <View
-                    style={[styles.swatch, { backgroundColor: `rgba(233,235,242,${share.alpha})` }]}
-                  />
-                  <T size={12.5} alpha={0.82} style={{ flex: 1 }}>
-                    {share.name}
-                  </T>
-                  <T weight="mono" size={11} alpha={0.42}>
-                    {share.percent}%
-                  </T>
-                </View>
-              ))}
+              {split.map((share) => {
+                const on = isOn(share);
+                /* Unselected rows step back rather than disappear: they are how a
+                   second category is added to the selection. */
+                const dim = narrowed && !on;
+                return (
+                  <Pressable
+                    key={share.name}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    accessibilityHint="Narrows this screen to the category"
+                    onPress={() => chooseCategories(share.categoryIds)}
+                    style={({ pressed }) => [styles.legendItem, pressed && styles.legendPressed]}
+                  >
+                    <View
+                      style={[
+                        styles.swatch,
+                        {
+                          backgroundColor: `rgba(233,235,242,${dim ? dimAlpha(share.alpha) : share.alpha})`,
+                        },
+                      ]}
+                    />
+                    <T size={12.5} alpha={dim ? 0.34 : 0.82} style={{ flex: 1 }}>
+                      {share.name}
+                    </T>
+                    <T weight="mono" size={11} alpha={dim ? 0.2 : 0.42}>
+                      {share.percent}%
+                    </T>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         </Card>
@@ -322,14 +401,45 @@ export function TrendsScreen({
         <Card quiet style={styles.insight}>
           <StatusDot />
           <T size={12.5} lineHeight={17.5} alpha={0.72} style={{ flex: 1 }}>
-            {selected
-              ? `${leader.name} took ${leader.percent}% of what you spent in ${selected.label}.`
-              : `${leader.name} takes ${leader.percent}% of everything you spend.`}
+            {/* Narrowed, the leading slice is no longer what the screen is about. */}
+            {selectionLabel
+              ? selected
+                ? `${selectionLabel} took ${selectionPercent}% of what you spent in ${selected.label}.`
+                : `${selectionLabel} ${chosen.length > 1 ? 'take' : 'takes'} ${selectionPercent}% of everything you spend.`
+              : selected
+                ? `${leader.name} took ${leader.percent}% of what you spent in ${selected.label}.`
+                : `${leader.name} takes ${leader.percent}% of everything you spend.`}
           </T>
         </Card>
       ) : null}
+
+      {/* Last word on the screen: everything above it is what it hands over. */}
+      {matchCount ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Opens these transactions on the Spend tab"
+          onPress={handOff}
+          style={({ pressed }) => [pressed && styles.stripPressed]}
+        >
+          <Card style={styles.strip}>
+            <T size={12.5} alpha={0.72}>
+              {matchCount === 1 ? 'See 1 transaction' : `See ${matchCount} transactions`}
+            </T>
+            {/* The app's one caret, turned to point the way it goes. */}
+            <View style={{ transform: [{ rotate: '-90deg' }] }}>
+              <CaretIcon color={fg(0.4)} size={13} />
+            </View>
+          </Card>
+        </Pressable>
+      ) : null}
     </View>
   );
+}
+
+/** 'YYYY-MM' back to the first millisecond of that month, for the hand-off. */
+function monthStartOf(key: string): number {
+  const [year, month] = key.split('-').map(Number);
+  return new Date(year, month - 1, 1).getTime();
 }
 
 /** The line under the chart: what the average month costs, or how one month sits against it. */
@@ -421,7 +531,16 @@ const styles = StyleSheet.create({
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   splitCard: { padding: 20, gap: 18 },
   splitRow: { flexDirection: 'row', alignItems: 'center', gap: 22 },
-  legend: { flex: 1, gap: 11 },
+  legend: { flex: 1, gap: 9 },
+  strip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+  },
+  stripPressed: { opacity: 0.7 },
+  legendPressed: { opacity: 0.6 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   swatch: { width: 7, height: 7, borderRadius: 2 },
   insight: {

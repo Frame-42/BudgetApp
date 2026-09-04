@@ -20,6 +20,8 @@ import { TrendsScreen } from './src/screens/TrendsScreen';
 import { YouScreen } from './src/screens/YouScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { BudgetProvider, useBudget } from './src/state/BudgetProvider';
+import { useTransactionFeed } from './src/state/useTransactionFeed';
+import { useTrendsView } from './src/state/useTrendsView';
 import { parseAmountToCents } from './src/format';
 import { GUTTER, color } from './src/theme';
 
@@ -38,6 +40,10 @@ function Background({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* Spend virtualizes its own list, which cannot nest in the shared ScrollView;
+   it takes the insets as props and scrolls itself. */
+const SCROLLS = [true, false, true, true, true];
+
 function Phone() {
   const insets = useSafeAreaInsets();
   const {
@@ -53,6 +59,11 @@ function Phone() {
     loadSampleData,
   } = useBudget();
   const [tab, setTab] = useState(0);
+  /* Spend's list is filtered and paged, so it keeps its own state and its own
+     database subscription rather than riding the provider's snapshot. */
+  const feed = useTransactionFeed();
+  /* Trends narrows by category, which is a query argument, so it owns its state too. */
+  const trends = useTrendsView();
 
   /* Entry state lives above the screens so it survives a trip to another tab. */
   const [amount, setAmount] = useState('');
@@ -89,13 +100,25 @@ function Phone() {
     setTab(1);
   };
 
+  /* The whole hand-off: Trends' scope becomes the list's filter, and the tab
+     bar's second entry is where that list lives. */
+  const seeTransactions = (scope: Parameters<typeof feed.focus>[0]) => {
+    feed.focus(scope);
+    setTab(1);
+  };
+
+  const contentInset = {
+    top: Math.max(insets.top, 24) + 6,
+    bottom: Math.max(insets.bottom, 12) + TAB_BAR_HEIGHT + 28,
+  };
+
   const screens = [
     <HomeScreen key="home" data={data.home} name={data.you.name} />,
     <SpendScreen
       key="spend"
-      data={data.spend}
-      month={data.home.month}
+      feed={feed}
       categories={data.add.categories}
+      contentInset={contentInset}
       onSave={updateExpense}
       onDelete={removeExpense}
     />,
@@ -112,12 +135,19 @@ function Phone() {
       daysRemaining={data.home.daysRemaining}
       onSubmit={submit}
     />,
-    <TrendsScreen
-      key="trends"
-      data={data.trends}
-      showHint={!data.monthPicked}
-      onPickMonth={notePickedMonth}
-    />,
+    trends.data ? (
+      <TrendsScreen
+        key="trends"
+        data={trends.data}
+        showHint={!data.monthPicked}
+        categoryIds={trends.categoryIds}
+        onToggleCategories={trends.toggleCategories}
+        onPickMonth={notePickedMonth}
+        onSeeTransactions={seeTransactions}
+      />
+    ) : (
+      <View key="trends" />
+    ),
     <YouScreen
       key="you"
       data={data.you}
@@ -132,20 +162,21 @@ function Phone() {
   return (
     <Background>
       <StatusBar style="light" />
-      <ScrollView
-        style={styles.fill}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: Math.max(insets.top, 24) + 6,
-            paddingBottom: Math.max(insets.bottom, 12) + TAB_BAR_HEIGHT + 28,
-          },
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {screens[tab]}
-      </ScrollView>
+      {SCROLLS[tab] ? (
+        <ScrollView
+          style={styles.fill}
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: contentInset.top, paddingBottom: contentInset.bottom },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {screens[tab]}
+        </ScrollView>
+      ) : (
+        <View style={[styles.fill, styles.content]}>{screens[tab]}</View>
+      )}
       <TabBar active={tab} onChange={setTab} bottomInset={insets.bottom} />
     </Background>
   );
