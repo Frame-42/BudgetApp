@@ -18,19 +18,30 @@ plugin) were reshaped after SDK 50.
 
 ```bash
 npm install
-npx expo start --ios     # opens in Expo Go
+npx expo start --ios     # Expo Go — the fast loop, still works
+npm run ios              # expo run:ios — compiles and installs the dev build
 npx tsc --noEmit         # the only check that exists; keep it clean
 ```
 
 There is no test runner and no linter configured. `src/queries/` is written as
 pure functions specifically so `jest-expo` can be added later without rework.
 
-## Hard constraint: Expo Go
+## Native builds are possible now; Expo Go is still the fast loop
 
-This machine has **no CocoaPods and no dev-client build**. Anything requiring a
-custom native build (WatermelonDB, op-sqlite, PowerSync, react-native-mmkv) will
-break the only working dev loop. Check a package ships in Expo Go before adding
-it, and prefer `npx expo install` over `npm install` so versions match the SDK.
+An earlier note here said this machine had **no CocoaPods and no dev-client
+build**. That is no longer true — CocoaPods 1.17 is installed, `app.json` carries
+a bundle identifier and an Android package, `expo-build-properties` pins the iOS
+deployment target to 16.4, and `npm run ios` is `expo run:ios`. So a package
+needing a custom native module is no longer fatal.
+
+It is still not free. Every dependency currently in `package.json` ships inside
+Expo Go, which is what keeps `npx expo start` working as a no-build loop; the
+first package that doesn't ship there costs everyone a native build on every
+clone. Weigh that before adding one, and prefer `npx expo install` over
+`npm install` so versions match the SDK.
+
+`ios/` and `android/` are gitignored prebuild output. Never hand-edit inside
+them — change `app.json` and let the next prebuild regenerate.
 
 ## Layout
 

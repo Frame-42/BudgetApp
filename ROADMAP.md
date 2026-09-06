@@ -1,7 +1,8 @@
 # ROADMAP
 
 Where BudgetApp stands and what it still needs. Written against the code as of
-`feat/setup` — five screens, on-device SQLite, import, onboarding, dev tools.
+`feat/you` — five screens, on-device SQLite, onboarding, import, export, an
+editable budget, dev tools.
 
 The app is complete as a *demonstration*: every screen draws real figures from
 real rows. It is not yet complete as a *product* — the gap is almost entirely
@@ -158,10 +159,13 @@ everything above the interface:
 - [ ] **ESLint + Prettier.** Neither is configured. The codebase is stylistically
       consistent by hand right now; that will not survive a second contributor.
 - [ ] **CI.** A GitHub Action running `tsc --noEmit` plus the tests above.
-- [ ] **Release config.** `app.json` has no iOS `bundleIdentifier` and no Android
-      `package`, and there is no `eas.json` — so no standalone build can be
-      produced today. Also decide `supportsTablet: true`, which is currently
-      claimed but never verified against a phone-shaped layout.
+- [ ] **Release config.** `app.json` now carries `com.framefr.budget` as both the
+      iOS `bundleIdentifier` and the Android `package`, and `expo-build-properties`
+      pins the iOS deployment target to 16.4 — so `expo run:ios` produces a local
+      dev build where nothing could be produced before. Still open: there is no
+      `eas.json`, so no reproducible release build and no signing story. Also
+      decide `supportsTablet: true`, which is currently claimed but never verified
+      against a phone-shaped layout.
 - [ ] **Android has never been run.** Same claim, same gap.
 
 ---
