@@ -236,3 +236,23 @@ const styles = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.accent },
 });
+
+/**
+ * The app's page ground. Lives here rather than in `App.tsx` because the
+ * full-screen editors render inside their own Modal, outside App's tree, and a
+ * second copy of the gradient config is a drift waiting to happen.
+ */
+export function Background({ children }: { children: React.ReactNode }) {
+  return (
+    <LinearGradient
+      colors={color.bg as unknown as [string, string, string]}
+      locations={color.bgStops as unknown as [number, number, number]}
+      /* CSS 178deg: essentially top-to-bottom with a hair of tilt. */
+      start={{ x: 0.48, y: 0 }}
+      end={{ x: 0.52, y: 1 }}
+      style={{ flex: 1 }}
+    >
+      {children}
+    </LinearGradient>
+  );
+}
