@@ -36,11 +36,21 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# generated native folders — output of `npx expo prebuild`, shaped by app.json
 /ios
 /android
 
+# editors
+.idea/
+.vscode/
+
 # local screenshots / scratch
 .shots/
-.idea/
 /iPhone Budgeting App Design.zip
+
+# agent scratch (tool-local; a shared .claude/settings.json is still committable)
+.claude/worktrees/
+.claude/checkpoints/
+.claude/mailbox/
+.claude/scheduled_tasks.json
+.claude/scheduled_tasks.lock
