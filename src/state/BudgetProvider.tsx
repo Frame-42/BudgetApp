@@ -3,8 +3,12 @@ import * as SQLite from 'expo-sqlite';
 import { getDb, getMeta, resetDatabase, setMeta } from '../db/client';
 import { loadDemoData } from '../db/demo';
 import { commitImport } from '../db/import';
+import { exportTransactionsCsv } from '../db/export';
+import { exportFilename } from '../export/csv';
+import { shareCsv } from '../export/share';
 import { runOnboarding, type OnboardingInput } from '../db/onboarding';
 import { createTransaction, deleteTransaction, editTransaction } from '../repo/transactions';
+import { saveMonthBudget, type BudgetInput } from '../db/budget';
 import { sanitizeMerchant } from '../format';
 import { loadHome, type HomeData } from '../queries/home';
 import { loadYou, type YouData } from '../queries/you';
@@ -44,10 +48,17 @@ type BudgetContextValue = {
   completeOnboarding: (input: OnboardingInput) => Promise<void>;
   notePickedMonth: () => Promise<void>;
   reset: () => Promise<void>;
+  /** Writes this month's overall budget and every category limit; later months inherit them. */
+  saveBudget: (input: BudgetInput) => Promise<void>;
   /** Reads an export and returns what it would do, without writing anything. */
   planImport: (text: string) => Promise<ImportPlan>;
   /** Writes a plan the user has finished reviewing; resolves with the count. */
   runImport: (plan: ImportPlan) => Promise<number>;
+  /**
+   * Hands every transaction to the share sheet as a CSV; resolves with how many
+   * rows went into it, and with 0 without opening anything when there are none.
+   */
+  exportCsv: () => Promise<number>;
   /** Development only: throw everything away and land on a populated month. */
   loadSampleData: () => Promise<void>;
 };
@@ -157,6 +168,17 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     await load();
   }, [load]);
 
+  /**
+   * The current month only — see `db/budget.ts` for why a cleared limit is
+   * written as an explicit zero rather than left out.
+   *
+   * No `load()`: this writes an ordinary table, so the change listener has it.
+   */
+  const saveBudget = useCallback<BudgetContextValue['saveBudget']>(async (input) => {
+    const db = await getDb();
+    await saveMonthBudget(db, input);
+  }, []);
+
   const planImport = useCallback(async (text: string) => {
     const db = await getDb();
     return buildImportPlan(db, text);
@@ -172,6 +194,21 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     const accountId = (await loadAddOptions(db)).defaultAccountId;
     if (!accountId) return 0;
     return commitImport(db, plan, accountId);
+  }, []);
+
+  /**
+   * The escape hatch: everything the app holds, in the format its own importer
+   * reads. Nothing is written to the database, so there is no `load()` here.
+   *
+   * An empty database returns 0 rather than opening the share sheet on a file
+   * with nothing but a header in it; the caller says so instead.
+   */
+  const exportCsv = useCallback<BudgetContextValue['exportCsv']>(async () => {
+    const db = await getDb();
+    const { text, count } = await exportTransactionsCsv(db);
+    if (count === 0) return 0;
+    await shareCsv(text, exportFilename());
+    return count;
   }, []);
 
   /** Resetting first means this never has to reason about existing real data. */
@@ -198,8 +235,10 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         completeOnboarding,
         notePickedMonth,
         reset,
+        saveBudget,
         planImport,
         runImport,
+        exportCsv,
         loadSampleData,
       }}
     >

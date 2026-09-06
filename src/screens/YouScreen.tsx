@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Amount, Card, Divider, Eyebrow, HeroCard, T } from '../components/primitives';
 import { ImportSheet } from '../components/ImportSheet';
+import { BudgetScreen, type BudgetDraft } from './BudgetScreen';
 import type { ImportPlan } from '../import/plan';
-import { ImportIcon } from '../components/Icons';
-import { tapSelect } from '../haptics';
-import type { YouData } from '../queries/you';
+import { ExportIcon, ImportIcon } from '../components/Icons';
+import { tapSelect, tapWarn } from '../haptics';
+import type { YouData, YouSettingKey } from '../queries/you';
 import { figure } from '../format';
 import { color, fg, radius, w } from '../theme';
 import { useDevTools } from '../devtools/DevToolsContext';
@@ -21,6 +22,8 @@ export function YouScreen({
   categories,
   onPlanImport,
   onRunImport,
+  onExport,
+  onSaveBudget,
   onReset,
   onLoadSample,
 }: {
@@ -28,24 +31,74 @@ export function YouScreen({
   categories: { id: string; name: string }[];
   onPlanImport: (text: string) => Promise<ImportPlan>;
   onRunImport: (plan: ImportPlan) => Promise<number>;
+  onExport: () => Promise<number>;
+  onSaveBudget: (draft: BudgetDraft) => Promise<void>;
   onReset: () => void;
   onLoadSample: () => void;
 }) {
   const [importOpen, setImportOpen] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  /* The tile's own subtitle is the whole of the export UI. There is no sheet
+     because there is nothing to decide: the share sheet is the next step, and
+     it is the system's. */
+  const [exportNote, setExportNote] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const { enabled: devToolsEnabled, setEnabled: setDevToolsEnabled } = useDevTools();
+
+  /* Keyed off the discriminant rather than the label, so renaming a row's copy
+     cannot quietly detach its editor. The budget row opens the whole budget —
+     the overall figure and a limit per category on one page — since the two are
+     one decision and splitting them across two screens made the total invisible
+     from wherever you were editing. The rest are still read-only (ROADMAP P1). */
+  const editors: Partial<Record<YouSettingKey, () => void>> = {
+    budget: () => {
+      tapSelect();
+      setBudgetOpen(true);
+    },
+  };
 
   /* The toggle itself only exists in a __DEV__ build — same guarantee a real
      production bundle already had, just explicit now instead of implicit. */
-  const rows: Row[] = __DEV__
-    ? [
-        ...data.settings,
-        {
-          name: 'Developer mode',
-          value: devToolsEnabled ? 'ON' : 'OFF',
-          onPress: () => setDevToolsEnabled(!devToolsEnabled),
-        },
-      ]
-    : data.settings;
+  const rows: Row[] = [
+    ...data.settings.map((setting) => ({
+      name: setting.name,
+      value: setting.value,
+      onPress: editors[setting.key],
+    })),
+    ...(__DEV__
+      ? [
+          {
+            name: 'Developer mode',
+            value: devToolsEnabled ? 'ON' : 'OFF',
+            onPress: () => setDevToolsEnabled(!devToolsEnabled),
+          },
+        ]
+      : []),
+  ];
+
+  /* A note describes the database as it was when the tap happened. Once the row
+     count moves — an import landed, sample data was loaded — it is talking about
+     a state that is gone, and "nothing to export yet" is then simply wrong. */
+  useEffect(() => setExportNote(null), [data.trackedCount]);
+
+  const runExport = async () => {
+    if (exporting) return;
+    tapSelect();
+    setExporting(true);
+    setExportNote(null);
+    try {
+      const count = await onExport();
+      /* Deliberately silent on success: the share sheet has already opened, and
+         iOS resolves whether or not the user went through with it — so "shared
+         42" would be a claim this screen cannot actually make. */
+      if (count === 0) setExportNote('Nothing to export yet');
+    } catch (problem) {
+      tapWarn();
+      setExportNote(problem instanceof Error ? problem.message : 'That export failed.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -129,32 +182,43 @@ export function YouScreen({
         <DevToolsPanel onReset={onReset} onLoadSample={onLoadSample} />
       ) : null}
 
-      {/* An action, not a setting — so a tile of its own rather than a fifth
-          row in the card above, where the right-hand slot means "current value". */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Import transactions"
-        accessibilityHint="Opens the transaction import"
+      {/* Actions, not settings — so tiles of their own rather than more rows in
+          the card above, where the right-hand slot means "current value". */}
+      <ActionTile
+        label="Import transactions"
+        hint="Opens the transaction import"
+        note="CSV or bank export"
+        icon={<ImportIcon color={fg(0.55)} size={18} />}
         onPress={() => {
           tapSelect();
           setImportOpen(true);
         }}
-        style={({ pressed }) => [styles.importTile, pressed && styles.importTilePressed]}
-      >
-        <ImportIcon color={fg(0.55)} size={18} />
-        <View style={{ gap: 5 }}>
-          <T size={13.5} alpha={0.86}>
-            Import transactions
-          </T>
-          <Eyebrow alpha={0.3}>CSV or bank export</Eyebrow>
-        </View>
-      </Pressable>
+      />
+
+      <ActionTile
+        label="Export transactions"
+        hint="Writes a CSV and opens the share sheet"
+        note={exporting ? 'Preparing…' : exportNote ?? 'CSV, everything recorded'}
+        alert={exportNote !== null && !exporting}
+        icon={<ExportIcon color={fg(0.55)} size={18} />}
+        busy={exporting}
+        onPress={runExport}
+      />
 
       <Card quiet style={styles.signOut}>
         <T size={12.5} alpha={0.5}>
           Sign out
         </T>
       </Card>
+
+      <BudgetScreen
+        visible={budgetOpen}
+        categories={data.categories}
+        budgetCents={data.budgetCents}
+        categoryLimits={data.categoryLimits}
+        onClose={() => setBudgetOpen(false)}
+        onSave={onSaveBudget}
+      />
 
       <ImportSheet
         visible={importOpen}
@@ -164,6 +228,52 @@ export function YouScreen({
         onRun={onRunImport}
       />
     </View>
+  );
+}
+
+/** The shape both bottom-of-screen actions take: icon, label, and a status line. */
+function ActionTile({
+  label,
+  hint,
+  note,
+  icon,
+  onPress,
+  busy,
+  alert,
+}: {
+  label: string;
+  hint: string;
+  note: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  busy?: boolean;
+  /** Colours the status line, for the one case where it is reporting a failure. */
+  alert?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      accessibilityState={{ disabled: !!busy, busy: !!busy }}
+      disabled={busy}
+      onPress={onPress}
+      style={({ pressed }) => [styles.actionTile, pressed && styles.actionTilePressed]}
+    >
+      {icon}
+      <View style={{ gap: 5, flexShrink: 1 }}>
+        <T size={13.5} alpha={0.86}>
+          {label}
+        </T>
+        {alert ? (
+          <T weight="mono" size={11} tracking={0.08} style={{ color: color.accentBright }}>
+            {note.toUpperCase()}
+          </T>
+        ) : (
+          <Eyebrow alpha={0.3}>{note}</Eyebrow>
+        )}
+      </View>
+    </Pressable>
   );
 }
 
@@ -197,7 +307,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   settingBorder: { borderBottomWidth: 1, borderBottomColor: color.hairline },
-  importTile: {
+  actionTile: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
@@ -208,7 +318,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 20,
   },
-  importTilePressed: { backgroundColor: w(0.085) },
+  actionTilePressed: { backgroundColor: w(0.085) },
   signOut: {
     borderRadius: radius.tile,
     padding: 16,

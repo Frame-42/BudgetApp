@@ -28,13 +28,19 @@ Three facts explain most of what follows:
 
 ## P0 — the data is not safe
 
-Everything lives in one SQLite file on one device, with no sync, no export and
-no backup. A wiped simulator or a lost phone loses every transaction the user
-has typed. This outranks every feature below.
+Everything lives in one SQLite file on one device, with no sync and no backup.
+There is now an export, so a user who remembers to run it can get their
+transactions off the device — but nothing else in the database travels with it,
+and nothing runs it for them. A wiped simulator or a lost phone still loses
+every setting, budget and category. This outranks every feature below.
 
-- [ ] **Export to CSV.** The mirror of `src/import/csv.ts`, which already knows
-      the shape. Cheapest possible escape hatch and it unblocks the user before
-      any backend exists. Share via `expo-sharing` / `expo-file-system`.
+- [x] **Export to CSV.** `src/export/csv.ts` writes the importer's own columns
+      and `src/export/share.ts` hands the file to the share sheet, from a tile on
+      the You screen. It round-trips: two rules were added to `import/plan.ts` (a
+      `category` column naming a known category, and an explicit `note` column)
+      so a restore lands the same transactions rather than a review queue.
+      Transactions only — categories, budgets and settings have no place in the
+      bank-export shape, so a full backup is still open.
 - [ ] **Wire the SQLite file into iOS backup deliberately** — confirm where
       `budget.db` lands and whether it is included in iCloud/iTunes backup, and
       say so in the README either way. Right now nobody knows.
@@ -46,17 +52,29 @@ has typed. This outranks every feature below.
 
 ## P1 — the settings screen is read-only
 
-`loadYou` renders four rows — Monthly budget, Categories, Weekly recap,
-Appearance — and none of them are tappable. All four values were captured during
-onboarding and can never be changed again. This is the most obvious "unfinished"
-edge a first user will hit.
+The budget — overall and per category — is now editable. Categories, Weekly
+recap and Appearance are still read-only, captured during onboarding and
+unchangeable after. Each row in `loadYou` carries a `key` discriminant and
+`YouScreen`'s `editors` map attaches an editor to it, so the remaining three are
+a screen each rather than any plumbing.
 
-- [ ] **Edit the monthly budget.** `setBudget(db, {month, category_id: null, …})`
-      already exists and limits carry forward by design; this is a sheet, not a
-      schema change.
-- [ ] **Edit per-category limits.** Same call with a `category_id`. Note the
-      existing rule: a category with *no* budget row is not the same as one with
-      a limit of zero — the editor has to be able to express both.
+Note the Categories row still means the category *list* (add, rename, reorder,
+archive — below), not its budgets; those live behind Monthly budget.
+
+- [x] **Edit the monthly budget.** Merged into the editor below — the overall
+      figure and the per-category limits are one decision, so they are one page.
+- [x] **Edit per-category limits.** `src/screens/BudgetScreen.tsx` — onboarding's
+      step 2 and step 4 on one page, prefilled, opened from the Monthly budget
+      row. Writes the current month only, so past months keep the budget they
+      were actually kept to. Saving below 100 € is refused: a nil budget makes
+      Home read "0% of 0 €".
+
+      The "no row is not a limit of zero" rule survives, inverted: a *cleared*
+      field must be written as an explicit zero for this month, because writing
+      nothing would leave an earlier month's limit still carrying forward. A zero
+      row reads as "no limit" everywhere (`queries/home.ts` gates on
+      `limitCents > 0`), and categories with nothing to override are skipped, so
+      the table doesn't grow a zero row per category per month.
 - [ ] **Manage categories after onboarding** — add, rename, reorder, and archive
       (`archiveCategory`, never delete — `queries/trends.ts` joins without the
       archived filter so old spending keeps its label).

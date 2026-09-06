@@ -109,3 +109,22 @@ export const ImportIcon = ({ color, size }: IconProps) => (
     />
   </Frame>
 );
+
+/** ImportIcon's mirror: the same tray, with the arrow leaving it. */
+export const ExportIcon = ({ color, size }: IconProps) => (
+  <Frame size={size}>
+    <Path
+      d="M9 10.3V2.9M6.2 5.7 9 2.9l2.8 2.8"
+      stroke={color}
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M3.3 11.6v2.3a1 1 0 0 0 1 1h9.4a1 1 0 0 0 1-1v-2.3"
+      stroke={color}
+      strokeWidth={1.4}
+      strokeLinecap="round"
+    />
+  </Frame>
+);

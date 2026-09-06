@@ -1,8 +1,15 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { listCategories } from '../repo/categories';
 import { listSettings } from '../repo/settings';
-import { monthlyBudgetCents } from '../repo/budgets';
+import { effectiveLimits, monthlyBudgetCents } from '../repo/budgets';
 import { monthKey } from '../time';
+
+/**
+ * Which setting a row is, so the screen can attach an editor without matching on
+ * the label. A rename of "Monthly budget" is then a copy change, not a silently
+ * broken tap target.
+ */
+export type YouSettingKey = 'budget' | 'categories' | 'recap' | 'appearance';
 
 export type YouData = {
   name: string;
@@ -12,7 +19,18 @@ export type YouData = {
   trackedCount: number;
   /** The three categories the most money has gone to, largest first. */
   topCategories: { id: string; name: string; spentCents: number }[];
-  settings: { name: string; value: string }[];
+  settings: { key: YouSettingKey; name: string; value: string }[];
+  /** The figure behind the budget row, for the editor to open on. */
+  budgetCents: number | null;
+  /** Cents per category id, carried-forward limits included, for the same editor. */
+  categoryLimits: Record<string, number>;
+  /**
+   * Live categories in `sort_order`. Deliberately not `add.categories`, which
+   * ranks by recent use: that is right for the Add screen's chips and wrong for
+   * a budget list, where the rows should sit where Home puts them and stay put
+   * between visits rather than reshuffling as spending moves.
+   */
+  categories: { id: string; name: string }[];
 };
 
 /**
@@ -47,7 +65,11 @@ export async function loadYou(db: SQLiteDatabase, at: number = Date.now()): Prom
       LIMIT 3`,
   );
 
-  const budget = await monthlyBudgetCents(db, monthKey(at));
+  const month = monthKey(at);
+  const [budget, limits] = await Promise.all([
+    monthlyBudgetCents(db, month),
+    effectiveLimits(db, month),
+  ]);
 
   return {
     // `||` not `??`: an empty name is storable, and it renders a blank avatar.
@@ -56,11 +78,14 @@ export async function loadYou(db: SQLiteDatabase, at: number = Date.now()): Prom
     trackedCents: tracked?.total ?? 0,
     trackedCount: tracked?.n ?? 0,
     topCategories: top.map((row) => ({ id: row.id, name: row.name, spentCents: row.total })),
+    budgetCents: budget,
+    categoryLimits: Object.fromEntries(limits),
+    categories: categories.map((category) => ({ id: category.id, name: category.name })),
     settings: [
-      { name: 'Monthly budget', value: budget ? `${Math.round(budget / 100).toLocaleString('en-US')} €` : '—' },
-      { name: 'Categories', value: String(categories.length) },
-      { name: 'Weekly recap', value: byKey.get('weekly_recap') ?? 'SUN' },
-      { name: 'Appearance', value: byKey.get('appearance') ?? 'DARK' },
+      { key: 'budget', name: 'Monthly budget', value: budget ? `${Math.round(budget / 100).toLocaleString('en-US')} €` : '—' },
+      { key: 'categories', name: 'Categories', value: String(categories.length) },
+      { key: 'recap', name: 'Weekly recap', value: byKey.get('weekly_recap') ?? 'SUN' },
+      { key: 'appearance', name: 'Appearance', value: byKey.get('appearance') ?? 'DARK' },
     ],
   };
 }

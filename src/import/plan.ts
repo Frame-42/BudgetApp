@@ -25,7 +25,7 @@ export type ImportRow = {
   note: string | null;
   categoryId: string | null;
   /** Why it was categorised, for the preview to explain itself. */
-  via: 'trading' | 'memory' | 'mcc' | null;
+  via: 'trading' | 'memory' | 'named' | 'mcc' | null;
   /** An existing transaction this looks like; the user decides. */
   duplicateOf: { merchant: string; occurredAt: number } | null;
   /** Excluded from the write: no category, or the user said not to. */
@@ -132,6 +132,17 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
       categoryId = memory.get(key) ?? null;
       via = 'memory';
     }
+    // A category column naming a category this app actually has. That is what
+    // our own export writes, so this is the rule that makes a backup restore
+    // into the same rows rather than into a review queue of everything.
+    //
+    // Below the memory deliberately: in a *bank's* export this column is the
+    // bank's guess, and a guess must not outrank a decision the user has made.
+    // On a fresh restore the memory is empty, so this still wins there.
+    if (!categoryId && record.category) {
+      categoryId = byName.get(record.category) ?? null;
+      via = categoryId ? 'named' : null;
+    }
     if (!categoryId) {
       const name = categoryForMcc(record.mcc_code ?? '');
       categoryId = name ? byName.get(name) ?? null : null;
@@ -154,7 +165,7 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
       key,
       amountCents,
       occurredAt,
-      note: originalAmountNote(record),
+      note: record.note || originalAmountNote(record),
       categoryId,
       via,
       duplicateOf: match ? { merchant: match.merchant, occurredAt: match.occurred_at } : null,
@@ -168,7 +179,11 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
   return { rows, ignoredIncoming, alreadyPresent };
 }
 
-/** The app is euro-only, so a foreign charge keeps what it was in the note. */
+/**
+ * The app is euro-only, so a foreign charge keeps what it was in the note. Only
+ * consulted when the file has no `note` column of its own — our export writes
+ * the note it already stored, which is usually this string from a past import.
+ */
 function originalAmountNote(record: Record<string, string>): string | null {
   const original = record.original_amount;
   const currency = record.original_currency;

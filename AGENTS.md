@@ -37,12 +37,13 @@ it, and prefer `npx expo install` over `npm install` so versions match the SDK.
 | Path | Holds |
 |---|---|
 | `src/theme.ts` | Design tokens — surfaces, the two accent tints, radii, fonts |
-| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx` |
-| `src/screens/` | One per tab, plus `OnboardingScreen`; presentational, fed by props |
+| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor) |
+| `src/screens/` | One per tab, plus `OnboardingScreen` and `BudgetScreen` (a full-screen Modal editor); presentational, fed by props |
 | `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
 | `src/repo/` | Typed CRUD per table — the only place writes happen |
 | `src/queries/` | Derived figures per screen; pure, rows in / numbers out |
 | `src/import/` | Bank-export reading: `csv.ts`, `rules.ts` (MCC + merchant names), `plan.ts` |
+| `src/export/` | CSV writing: `csv.ts` (the serializer), `share.ts` (file + share sheet) |
 | `src/state/BudgetProvider.tsx` | Opens the DB, recomputes on every change |
 | `src/devtools/` | `DevToolsContext.tsx` (the runtime on/off flag), `DevToolsPanel.tsx` (the dev-only actions card) |
 | `src/sync/` | The `SyncEngine` interface and its no-op default |
@@ -73,6 +74,45 @@ zero extra work. While developing, toggling that row off in the You screen hides
 look exactly like the shipped product, with no rebuild; toggling it back on
 restores the tools. New dev-only actions belong in `DevToolsPanel.tsx`'s `tools`
 array, not as another ad-hoc `__DEV__` check in a screen.
+
+**A budget edit writes the current month, never a past one.** `monthlyBudgetCents`
+and `effectiveLimits` both resolve with `month <= ? ORDER BY month DESC`, so one
+month's rows cover every month after it and `db/budget.ts` only ever upserts
+`monthKey(Date.now())` — the same rule `db/onboarding.ts` follows. Back-dating
+instead would hand the Trends bars a budget those months never had. A month
+picker here is not a small feature; it is a decision to let the app rewrite its
+own history.
+
+**A cleared category limit is written as an explicit zero.** Because limits carry
+forward, writing *nothing* for a blanked field leaves an earlier month's row
+still applying — the edit would silently not take. So `saveMonthBudget` reads
+`effectiveLimits` first and writes a 0 row for this month wherever a limit was in
+force and the field is now empty. A 0 row is a real state, not a missing one:
+`queries/home.ts` gates on `limitCents > 0`, so it renders exactly as a category
+that never had a limit. Categories with nothing to override are skipped, which is
+what stops the table growing a zero row per category per month. Onboarding is the
+opposite case and keeps its own rule — there is nothing to override on a first
+run, so a blank there writes no row at all.
+
+**The budget editor and onboarding are the same two controls.**
+`src/components/BudgetAmountCard.tsx` (the rail plus its typed escape) and
+`src/components/CategoryLimits.tsx` (left-to-assign, split evenly, a field per
+category) are shared by `OnboardingScreen` steps 2 and 4 and by `BudgetScreen`.
+Change the budget UI in one of them and both move. `BudgetAmountCard` pushes its
+typed value on every keystroke rather than on a commit, which is what lets both
+callers drop it from their navigation — there is never an uncommitted value to
+lose, and `typing` resets by unmounting since both render it conditionally.
+
+**The budget list orders by `sort_order`, not `add.categories`.** `loadAddOptions`
+ranks by recent use, which is right for the Add screen's chips and wrong for a
+list of limits that should sit where Home puts them and stay put between visits.
+`loadYou` carries its own `categories` in `sort_order` for exactly this.
+
+**You's setting rows are keyed, not matched by label.** `queries/you.ts` gives
+each row a `key` (`'budget' | 'categories' | 'recap' | 'appearance'`) and
+`YouScreen`'s `editors` map attaches the sheet to that. Renaming a row's copy is
+then a copy change; matching on the string 'Monthly budget' would make it a
+silently dead tap target.
 
 **Deselecting a category archives it.** `archiveCategory`, never a delete —
 `listCategories` filters `archived = 0` so it leaves the chips, while `queries/trends.ts`
@@ -146,9 +186,27 @@ shop on one afternoon, so dropping a match automatically would lose real spendin
 `decided` are separate fields for the same reason: a flagged duplicate starts
 skipped, so "decided" cannot be inferred from it.
 
+**The export is the importer's format, and that is load-bearing.** `src/export/csv.ts`
+writes exactly the columns `src/import/plan.ts` reads — `datetime, amount, name,
+category, note, transaction_id` — so a file that leaves round-trips into the same
+transactions. Two importer rules exist only to close that loop: a `category`
+column naming a category the app has is honoured, and an explicit `note` column
+beats the one derived from `original_amount`. Adding a column the importer
+ignores makes the export a report rather than a backup; don't.
+
+`transaction_id` is `external_id ?? id`, so hand-entered rows carry the app's own
+row id rather than leaving the importer's required column blank — which is what
+makes re-importing an export idempotent. `datetime` is local ISO with the offset
+(`time.ts`'s `isoLocal`), never `toISOString()`: a 00:30 purchase in Zurich has a
+UTC date of the day before, and off-by-one dates in a budget app are worse than
+no export. Amounts are decimal euros in the file and cents everywhere else.
+
 **Merchant memory outranks the MCC table.** `src/import/rules.ts` resolves in the
 order: securities purchase → what the user has previously chosen for that
-merchant → MCC → review. A code is a guess about a business; the memory is a
+merchant → a `category` column naming a category we have → MCC → review. The
+category column sits *below* the memory deliberately: in a bank's file that
+column is the bank's guess, and a guess must not outrank a decision the user
+made. On a restore into an empty app the memory is empty, so it still wins there. A code is a guess about a business; the memory is a
 decision the user already made, and it is derived by counting existing
 transactions rather than stored, so ordinary manual entry teaches it too.
 

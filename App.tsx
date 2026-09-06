@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useFonts,
@@ -12,6 +11,7 @@ import {
 } from '@expo-google-fonts/geist';
 import { GeistMono_400Regular, GeistMono_500Medium } from '@expo-google-fonts/geist-mono';
 
+import { Background } from './src/components/primitives';
 import { TabBar, TAB_BAR_HEIGHT } from './src/components/TabBar';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { SpendScreen } from './src/screens/SpendScreen';
@@ -25,21 +25,6 @@ import { useTransactionFeed } from './src/state/useTransactionFeed';
 import { useTrendsView } from './src/state/useTrendsView';
 import { parseAmountToCents } from './src/format';
 import { GUTTER, color } from './src/theme';
-
-function Background({ children }: { children: React.ReactNode }) {
-  return (
-    <LinearGradient
-      colors={color.bg as unknown as [string, string, string]}
-      locations={color.bgStops as unknown as [number, number, number]}
-      /* CSS 178deg: essentially top-to-bottom with a hair of tilt. */
-      start={{ x: 0.48, y: 0 }}
-      end={{ x: 0.52, y: 1 }}
-      style={styles.fill}
-    >
-      {children}
-    </LinearGradient>
-  );
-}
 
 /* Spend virtualizes its own list, which cannot nest in the shared ScrollView;
    it takes the insets as props and scrolls itself. */
@@ -55,8 +40,10 @@ function Phone() {
     completeOnboarding,
     notePickedMonth,
     reset,
+    saveBudget,
     planImport,
     runImport,
+    exportCsv,
     loadSampleData,
   } = useBudget();
   const [tab, setTab] = useState(0);
@@ -155,6 +142,8 @@ function Phone() {
       categories={data.add.categories}
       onPlanImport={planImport}
       onRunImport={runImport}
+      onExport={exportCsv}
+      onSaveBudget={saveBudget}
       onReset={reset}
       onLoadSample={loadSampleData}
     />,
