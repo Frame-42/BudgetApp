@@ -38,6 +38,23 @@ export async function effectiveLimits(
   return new Map(rows.map((r) => [r.category_id, r.limit_cents]));
 }
 
+/**
+ * Retires every row after `month`. Only a "this month only" save writes ahead of
+ * the current month, so anything found here is one of its pin rows — clearing
+ * them first is what lets a later edit of the same month take effect from the
+ * month after it, rather than being overridden by a pin left behind.
+ *
+ * Soft, like every other delete: an absent row can't tell a server anything.
+ */
+export const clearFutureBudgets = (db: SQLiteDatabase, month: string) => {
+  const stamp = now();
+  return db.runAsync(
+    `UPDATE budgets SET deleted_at = ?, updated_at = ?
+      WHERE deleted_at IS NULL AND month > ?`,
+    [stamp, stamp, month],
+  );
+};
+
 /** Upsert of one month/category limit. */
 export const setBudget = (
   db: SQLiteDatabase,

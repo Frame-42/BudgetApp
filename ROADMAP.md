@@ -65,8 +65,8 @@ archive — below), not its budgets; those live behind Monthly budget.
       figure and the per-category limits are one decision, so they are one page.
 - [x] **Edit per-category limits.** `src/screens/BudgetScreen.tsx` — onboarding's
       step 2 and step 4 on one page, prefilled, opened from the Monthly budget
-      row. Writes the current month only, so past months keep the budget they
-      were actually kept to. Saving below 100 € is refused: a nil budget makes
+      row. Never writes a past month, so those keep the budget they were
+      actually kept to. Saving below 100 € is refused: a nil budget makes
       Home read "0% of 0 €".
 
       The "no row is not a limit of zero" rule survives, inverted: a *cleared*
@@ -75,6 +75,16 @@ archive — below), not its budgets; those live behind Monthly budget.
       row reads as "no limit" everywhere (`queries/home.ts` gates on
       `limitCents > 0`), and categories with nothing to override are skipped, so
       the table doesn't grow a zero row per category per month.
+- [x] **Recurring vs. this month only.** A sliding pill in the editor's floating
+      footer (`src/components/SegmentedPill.tsx`) says how far the edit reaches —
+      it sits with the CTA because it is part of saving rather than part of the
+      figures — and the eyebrow restates the choice, since the difference is
+      invisible until the month turns over. `recurring` is the plain write;
+      `month` adds a *pin* on the following month holding whatever was already in
+      force there, which is what stops this month's rows carrying any further.
+      Both scopes clear everything after this month first, so an earlier
+      one-off's pins can't outlive the edit that replaced them. See AGENTS.md
+      for the three rules that keep it consistent.
 - [ ] **Manage categories after onboarding** — add, rename, reorder, and archive
       (`archiveCategory`, never delete — `queries/trends.ts` joins without the
       archived filter so old spending keeps its label).

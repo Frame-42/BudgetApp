@@ -48,7 +48,11 @@ type BudgetContextValue = {
   completeOnboarding: (input: OnboardingInput) => Promise<void>;
   notePickedMonth: () => Promise<void>;
   reset: () => Promise<void>;
-  /** Writes this month's overall budget and every category limit; later months inherit them. */
+  /**
+   * Writes this month's overall budget and every category limit. A `recurring`
+   * scope lets later months inherit them; a `month` scope pins the month after
+   * back to what it held.
+   */
   saveBudget: (input: BudgetInput) => Promise<void>;
   /** Reads an export and returns what it would do, without writing anything. */
   planImport: (text: string) => Promise<ImportPlan>;
@@ -169,7 +173,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, [load]);
 
   /**
-   * The current month only — see `db/budget.ts` for why a cleared limit is
+   * This month, and — for a one-off edit — a pin on the next one that stops it
+   * carrying further. See `db/budget.ts` for that, and for why a cleared limit is
    * written as an explicit zero rather than left out.
    *
    * No `load()`: this writes an ordinary table, so the change listener has it.

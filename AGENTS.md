@@ -37,7 +37,7 @@ it, and prefer `npx expo install` over `npm install` so versions match the SDK.
 | Path | Holds |
 |---|---|
 | `src/theme.ts` | Design tokens — surfaces, the two accent tints, radii, fonts |
-| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor) |
+| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor), `SegmentedPill.tsx` (the two-state slide switch) |
 | `src/screens/` | One per tab, plus `OnboardingScreen` and `BudgetScreen` (a full-screen Modal editor); presentational, fed by props |
 | `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
 | `src/repo/` | Typed CRUD per table — the only place writes happen |
@@ -82,6 +82,26 @@ month's rows cover every month after it and `db/budget.ts` only ever upserts
 instead would hand the Trends bars a budget those months never had. A month
 picker here is not a small feature; it is a decision to let the app rewrite its
 own history.
+
+**"This month only" is a pin on the month *after*, not a scope on this one.**
+`BudgetInput.scope` picks between the two: `recurring` is the plain write above,
+and `month` adds a row on `monthKey(addMonths(now, 1))` holding the figure that
+was already in force there, which is what stops this month's rows carrying
+further. Three things make it hold together:
+
+- The pin is read against **next month**, before anything is written — not
+  against last month. A recurring save made an hour ago is already the standing
+  budget, and reading backwards would revert past it. An existing pin answers
+  for itself.
+- Both scopes call `clearFutureBudgets` first, so a pin from an earlier one-off
+  can't outlive the edit that replaced it — otherwise a later *recurring* save
+  would take effect this month and be silently undone the next.
+- A pin is written only where the figure actually moved, and a category absent
+  from the pin is written as an explicit `0` (the same rule as a cleared limit).
+  Pinning what carrying forward already says grows the table for nothing.
+
+Anything found at `month > monthKey(now)` is by construction a pin: nothing else
+in the app writes ahead of the current month.
 
 **A cleared category limit is written as an explicit zero.** Because limits carry
 forward, writing *nothing* for a blanked field leaves an earlier month's row

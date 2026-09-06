@@ -9,33 +9,40 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { Background, Eyebrow, T } from '../components/primitives';
 import { BudgetAmountCard, TYPED_MIN_CENTS } from '../components/BudgetAmountCard';
-import {
-  CategoryLimits,
-  assignedCentsOf,
-  limitCentsOf,
-  type Limits,
-} from '../components/CategoryLimits';
+import { SegmentedPill } from '../components/SegmentedPill';
+import { CategoryLimits, limitCentsOf, type Limits } from '../components/CategoryLimits';
 import { tapDone, tapSelect } from '../haptics';
 import { euroLabel } from '../format';
 import { daysInMonth } from '../time';
+import type { BudgetScope } from '../db/budget';
 import { GUTTER, color, radius, w } from '../theme';
 
 export type BudgetDraft = {
   monthlyBudgetCents: number;
   /** Every category shown, 0 where the field was left blank. */
   categoryLimitsCents: Record<string, number>;
+  /** Whether the edit stands from now on, or applies to this month alone. */
+  scope: BudgetScope;
 };
+
+const SCOPES = [
+  { value: 'recurring', label: 'Recurring' },
+  { value: 'month', label: 'This month only' },
+] as const satisfies readonly { value: BudgetScope; label: string }[];
 
 /**
  * The budget editor: onboarding's step 2 and step 4 on one page, prefilled from
  * what is stored. A full-screen Modal rather than a sheet because it is a form
  * with a column of fields — `Sheet`'s card deliberately does not scroll.
  *
- * It writes the current month only, so limits carry forward from here while past
- * months keep the budget they were actually kept to. The footnote says so.
+ * It never writes a past month, so those keep the budget they were actually kept
+ * to. What it does to the *future* is the one thing the user chooses: `recurring`
+ * carries forward from here, `month` is a one-off that next month undoes. That
+ * choice sits with the CTA rather than at the top of the form, because it is
+ * part of saving rather than part of the figures; the eyebrow restates it, since
+ * the difference is invisible until the month turns over.
  */
 export function BudgetScreen({
   visible,
@@ -57,6 +64,7 @@ export function BudgetScreen({
   const insets = useSafeAreaInsets();
   const [amountCents, setAmountCents] = useState(0);
   const [limits, setLimits] = useState<Limits>({});
+  const [scope, setScope] = useState<BudgetScope>('recurring');
   /* Measured rather than guessed: the footer floats over the list, and a
      hard-coded inset leaves the last category under it on one device or a gap
      on the next. */
@@ -67,6 +75,8 @@ export function BudgetScreen({
   useEffect(() => {
     if (!visible) return;
     setAmountCents(budgetCents ?? 0);
+    // The standing budget is the ordinary edit; a one-off is asked for each time.
+    setScope('recurring');
     const seeded: Limits = {};
     for (const [id, cents] of Object.entries(categoryLimits)) {
       // A zero row means the limit was cleared; it seeds as blank, not as "0".
@@ -78,7 +88,6 @@ export function BudgetScreen({
   if (!visible) return null;
 
   const canSave = amountCents >= TYPED_MIN_CENTS;
-  const assignedCents = assignedCentsOf(limits, categories);
   const perDayCents = Math.round(amountCents / daysInMonth(Date.now()));
   const month = new Date().toLocaleString('en-US', { month: 'long' });
 
@@ -91,7 +100,7 @@ export function BudgetScreen({
     for (const category of categories) {
       categoryLimitsCents[category.id] = limitCentsOf(limits, category.id);
     }
-    onSave({ monthlyBudgetCents: amountCents, categoryLimitsCents });
+    onSave({ monthlyBudgetCents: amountCents, categoryLimitsCents, scope });
     onClose();
   };
 
@@ -107,7 +116,7 @@ export function BudgetScreen({
           <View style={[styles.header, { paddingTop: Math.max(insets.top, 24) + 6 }]}>
             <View style={{ gap: 5, flex: 1 }}>
               <Eyebrow size={10} tracking={0.18}>
-                From {month} on
+                {scope === 'recurring' ? `From ${month} on` : `${month} only`}
               </Eyebrow>
               <T
                 weight="light"
@@ -157,12 +166,20 @@ export function BudgetScreen({
             />
           </ScrollView>
 
-          <BlurView
-            intensity={18}
-            tint="dark"
+          {/* Floating, like the tab bar: no bar behind it, the list running on
+              underneath. `box-none` keeps the gap between the two controls a
+              hole rather than a lid over the last category row. */}
+          <View
+            pointerEvents="box-none"
             onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
-            style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) + 14 }]}
+            style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}
           >
+            <SegmentedPill
+              accessibilityLabel="How long this budget applies"
+              options={SCOPES}
+              value={scope}
+              onChange={setScope}
+            />
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: !canSave }}
@@ -178,12 +195,7 @@ export function BudgetScreen({
                 Save budget
               </T>
             </Pressable>
-            <T size={11} lineHeight={11 * 1.4} alpha={0.3} style={styles.footnote}>
-              {canSave
-                ? `${euroLabel(assignedCents)} of ${euroLabel(amountCents)} assigned. Past months keep the budget they had.`
-                : `A budget starts at ${euroLabel(TYPED_MIN_CENTS)}.`}
-            </T>
-          </BlurView>
+          </View>
         </KeyboardAvoidingView>
       </Background>
     </Modal>
@@ -211,10 +223,13 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: GUTTER, gap: 14 },
   lede: { paddingHorizontal: 2 },
   footer: {
-    paddingTop: 16,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 14,
     paddingHorizontal: GUTTER,
-    gap: 14,
-    backgroundColor: 'rgba(11,12,16,0.72)',
+    gap: 10,
   },
   cta: {
     height: 52,
@@ -223,5 +238,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  footnote: { textAlign: 'center' },
 });
