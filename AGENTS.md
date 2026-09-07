@@ -149,6 +149,50 @@ silently dead tap target.
 `listCategories` filters `archived = 0` so it leaves the chips, while `queries/trends.ts`
 joins without that filter so old spending keeps its label.
 
+**A split transaction is N real rows, not a spread computed at read time.**
+`src/db/split.ts` turns one transaction into one ordinary transaction row per
+month, sharing a `split_id` (migration v3). Deriving it on the way out instead
+would mean teaching Home, Trends, Spend, the donut, the weekly bars and the CSV
+export what a split is; materialising it means none of them ever find out — a
+part is simply spending in its own month. Six rules hold it together:
+
+- **The sheet edits the whole transaction, not the part that was held.** The
+  amount it seeds is `split.totalCents`, and the month count is the reach. The
+  head still shows the part, because that is the row the user tapped.
+- **A delete takes the group.** Leaving eleven twelfths of a purchase behind
+  because the sheet was opened on December is a trap, not a feature.
+- **The parts always sum back to the figure that was typed.** `splitAmounts`
+  hands the remainder to the earliest parts (1000 over 3 is 3.34 + 3.33 + 3.33),
+  so no cent is ever lost to rounding. The preview in the sheet calls the same
+  function, so the figure shown is the figure written.
+- **Later parts keep the day of the month, clamped.** `addMonthsKeepingDay`, not
+  `addMonths` — which lands on the 1st, right for a budget month and wrong here.
+  Every part is measured from the anchor rather than from its predecessor, so
+  31 Jan spread over 12 gives 12 distinct months with no drift, and 28 Feb does
+  not pull March back to the 28th.
+- **Changing the count reuses rows in place.** 12 months down to 6 rewrites six
+  and soft-deletes six; it does not delete twelve and mint twelve fresh ids
+  through the outbox. Only the surplus is retired, only the shortfall created.
+- **`external_id` is never copied onto a new part.** The bank's id identifies one
+  line on one statement; on twelve rows it would make a re-import skip real
+  spending. Only the row that was actually imported keeps it, which it does by
+  being the one reused.
+
+The count and the total are aggregated in `queries/transactions.ts` rather than
+stored, so they cannot drift from the rows; `split_index` *is* stored, because a
+part's position is a fact about the row. A group that has shrunk to one row is
+reported as no split at all — it reads and edits as an ordinary transaction, and
+the stale id is dropped on the next save.
+
+Two consequences worth knowing before changing this. The money leaves the month
+it actually left the account, which is the point but is also why account
+balances still come out right: `balancesByAccount` sums every part whatever its
+date, and the parts sum to the original. And the CSV export writes the parts as
+twelve independent rows, so a file that leaves and comes back is twelve
+transactions rather than one split — the money round-trips, the grouping does
+not. Fixing that means a new column, which `export/csv.ts` says is exactly what
+turns the export from a backup into a report; leave it.
+
 **Money is integer cents, everywhere.** Never floats, never a formatted string in
 the database. Format only via `src/format.ts`. The euro symbol *trails* the
 figure ("1,240 €"), including in the `Amount` component.

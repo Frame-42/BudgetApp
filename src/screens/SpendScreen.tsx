@@ -7,6 +7,7 @@ import { TransactionRow } from '../components/TransactionRow';
 import { SpendItemSheet } from '../components/SpendItemSheet';
 import { MonthPickerSheet } from '../components/MonthPickerSheet';
 import { tapSelect } from '../haptics';
+import type { SplitEdit, SplitTarget } from '../db/split';
 import type { TransactionItem } from '../queries/transactions';
 import type { Period, TransactionFeed } from '../state/useTransactionFeed';
 import { figure } from '../format';
@@ -106,14 +107,8 @@ export function SpendScreen({
   /** Live categories, for the edit sheet's chips. */
   categories: { id: string; name: string }[];
   contentInset: { top: number; bottom: number };
-  onSave: (input: {
-    id: string;
-    amountCents: number;
-    categoryId: string | null;
-    income: boolean;
-    merchant: string;
-  }) => void;
-  onDelete: (id: string) => void;
+  onSave: (input: SplitEdit) => void;
+  onDelete: (target: SplitTarget) => void;
 }) {
   /* Which row is being acted on: transient overlay state, so it stays local. */
   const [selected, setSelected] = useState<TransactionItem | null>(null);

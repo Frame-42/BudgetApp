@@ -7,7 +7,13 @@ import { exportTransactionsCsv } from '../db/export';
 import { exportFilename } from '../export/csv';
 import { shareCsv } from '../export/share';
 import { runOnboarding, type OnboardingInput } from '../db/onboarding';
-import { createTransaction, deleteTransaction, editTransaction } from '../repo/transactions';
+import { createTransaction } from '../repo/transactions';
+import {
+  deleteTransactionSplit,
+  saveTransactionSplit,
+  type SplitEdit,
+  type SplitTarget,
+} from '../db/split';
 import { saveMonthBudget, type BudgetInput } from '../db/budget';
 import { sanitizeMerchant } from '../format';
 import { loadHome, type HomeData } from '../queries/home';
@@ -37,14 +43,13 @@ type BudgetContextValue = {
     categoryId: string | null;
     merchant: string;
   }) => Promise<void>;
-  updateExpense: (input: {
-    id: string;
-    amountCents: number;
-    categoryId: string | null;
-    income: boolean;
-    merchant: string;
-  }) => Promise<void>;
-  removeExpense: (id: string) => Promise<void>;
+  /**
+   * The edit sheet's save. It edits the whole transaction, splits included — a
+   * held part carries its group, and `months` is how far the amount is spread.
+   */
+  updateExpense: (input: SplitEdit) => Promise<void>;
+  /** Takes the group, not the row: a part is never deleted without its siblings. */
+  removeExpense: (target: SplitTarget) => Promise<void>;
   completeOnboarding: (input: OnboardingInput) => Promise<void>;
   notePickedMonth: () => Promise<void>;
   reset: () => Promise<void>;
@@ -133,24 +138,21 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const updateExpense = useCallback<BudgetContextValue['updateExpense']>(
-    async ({ id, amountCents, categoryId, income, merchant }) => {
-      if (amountCents <= 0) return;
-      const db = await getDb();
-      await editTransaction(db, id, {
-        // The sheet edits a magnitude; the row's own direction decides the sign.
-        amount_cents: income ? amountCents : -amountCents,
-        category_id: categoryId,
-        merchant: sanitizeMerchant(merchant),
-      });
-    },
-    [],
-  );
+  /**
+   * One write path whether or not months are involved: a plain row spread over
+   * one month is just an update, which is what `saveTransactionSplit` does with
+   * `months: 1`. It keeps the sign convention — the sheet edits a magnitude and
+   * the row's own direction decides the sign.
+   */
+  const updateExpense = useCallback<BudgetContextValue['updateExpense']>(async (edit) => {
+    const db = await getDb();
+    await saveTransactionSplit(db, { ...edit, merchant: sanitizeMerchant(edit.merchant) });
+  }, []);
 
   /** Soft delete — the update trigger turns it into an outbox 'delete' for sync. */
-  const removeExpense = useCallback<BudgetContextValue['removeExpense']>(async (id) => {
+  const removeExpense = useCallback<BudgetContextValue['removeExpense']>(async (target) => {
     const db = await getDb();
-    await deleteTransaction(db, id);
+    await deleteTransactionSplit(db, target);
   }, []);
 
   const completeOnboarding = useCallback<BudgetContextValue['completeOnboarding']>(

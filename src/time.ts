@@ -21,6 +21,25 @@ export const addMonths = (d: Date | number, n: number): number => {
   return new Date(x.getFullYear(), x.getMonth() + n, 1).getTime();
 };
 
+/**
+ * The same day of the month, `n` months on, keeping the time of day — what a
+ * split's later parts are dated to.
+ *
+ * `addMonths` lands on the 1st, which is right for a budget month and wrong
+ * here: a payment made on the 28th should keep reading as the 28th. A day the
+ * target month doesn't have is clamped to its last (31 Jan + 1 month -> 28 Feb)
+ * rather than rolling into the month after, which is what `setMonth` would do
+ * and would put two parts in one month.
+ */
+export function addMonthsKeepingDay(d: Date | number, n: number): number {
+  const x = new Date(d);
+  const target = new Date(x.getFullYear(), x.getMonth() + n, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(x.getDate(), lastDay));
+  target.setHours(x.getHours(), x.getMinutes(), x.getSeconds(), x.getMilliseconds());
+  return target.getTime();
+}
+
 export const daysInMonth = (d: Date | number): number => {
   const x = new Date(d);
   return new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate();
