@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Card, Eyebrow, T, TextField } from './primitives';
+import { cardStyle, Eyebrow, FieldSurface, T, TextField } from './primitives';
 import { CategoryChips } from './CategoryChips';
 import { Keypad } from './Keypad';
 import { Sheet } from './Sheet';
@@ -165,7 +165,7 @@ export function SpendItemSheet({
             <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
           )}
 
-          <Card quiet style={styles.nameCard}>
+          <FieldSurface style={[cardStyle(true), styles.nameCard]}>
             <Eyebrow>For</Eyebrow>
             <TextField
               value={merchant}
@@ -178,7 +178,7 @@ export function SpendItemSheet({
               size={14}
               style={{ color: color.textStrong }}
             />
-          </Card>
+          </FieldSurface>
 
           <Keypad value={amount} onChange={setAmount} />
 

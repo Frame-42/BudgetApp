@@ -1,7 +1,10 @@
 import React from 'react';
 import {
   Platform,
+  Pressable,
+  PressableProps,
   StyleSheet,
+  StyleProp,
   Text,
   TextInput,
   TextInputProps,
@@ -93,6 +96,51 @@ export function T({
 }
 
 /**
+ * Set by `FieldSurface` so the `TextField` under it can hand back its node
+ * without every call site threading a ref through.
+ */
+const FieldTarget = React.createContext<React.MutableRefObject<TextInput | null> | null>(null);
+
+/**
+ * A field's whole surface, not just the line of text in it.
+ *
+ * A `TextInput` answers taps across its own box and nothing else — one line of
+ * text tall, inside whatever padding the container carries — so a 54pt pill with
+ * an 18pt inset takes taps on a band through its middle and ignores the rest of
+ * what the user can see. Aim anywhere but that band and the keyboard doesn't
+ * open, which reads as a dead control rather than a small target.
+ *
+ * So the styled container is the target: use this in place of the `View` or
+ * `Card` around a field, and a tap anywhere on it is forwarded to the input.
+ * Taps that land on the input itself never reach here, so placing the cursor by
+ * tapping mid-word still works.
+ */
+export function FieldSurface({
+  style,
+  children,
+  ...rest
+}: Omit<PressableProps, 'style' | 'onPress'> & {
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  const input = React.useRef<TextInput | null>(null);
+  return (
+    <FieldTarget.Provider value={input}>
+      <Pressable
+        {...rest}
+        /* The input is the accessible control; this only widens where a finger
+           may land, so it must not announce a second one over the top of it. */
+        accessible={false}
+        onPress={() => input.current?.focus()}
+        style={style}
+      >
+        {children}
+      </Pressable>
+    </FieldTarget.Provider>
+  );
+}
+
+/**
  * Geist body copy, editable. Mirrors `T`'s font resolution exactly so typed
  * text sits flush with the app's display text — this is the app's only
  * keyboard text entry, so it's the one place that convention has to hold.
@@ -104,6 +152,7 @@ export function TextField({
   tracking = 0,
   lineHeight,
   style,
+  ref,
   ...rest
 }: TextInputProps & {
   size?: number;
@@ -111,9 +160,20 @@ export function TextField({
   weight?: 'light' | 'regular' | 'medium' | 'semibold' | 'mono' | 'monoMedium';
   tracking?: number;
   lineHeight?: number;
+  ref?: React.Ref<TextInput>;
 }) {
+  /* Null outside a FieldSurface, which is the plain TextInput this has always
+     been — nothing else has to change to keep working. */
+  const target = React.useContext(FieldTarget);
+  const attach = (node: TextInput | null) => {
+    if (target) target.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) (ref as React.MutableRefObject<TextInput | null>).current = node;
+  };
+
   return (
     <TextInput
+      ref={attach}
       placeholderTextColor={fg(0.3)}
       selectionColor={color.accentBright}
       cursorColor={color.accentBright}
@@ -167,21 +227,21 @@ export function Amount({
   );
 }
 
+/**
+ * The Card look on its own, so something that is not a `View` can wear it —
+ * a `FieldSurface` around a field that used to be a Card, in particular.
+ */
+export const cardStyle = (quiet?: boolean): ViewStyle => ({
+  borderRadius: radius.card,
+  backgroundColor: quiet ? color.tileQuiet : color.tile,
+  borderWidth: 1,
+  borderColor: quiet ? color.tileQuietBorder : color.tileBorder,
+});
+
 /** Flat surface: rgba(255,255,255,.04) over a .06 border. */
 export function Card({ style, children, quiet, ...rest }: ViewProps & { quiet?: boolean }) {
   return (
-    <View
-      {...rest}
-      style={[
-        {
-          borderRadius: radius.card,
-          backgroundColor: quiet ? color.tileQuiet : color.tile,
-          borderWidth: 1,
-          borderColor: quiet ? color.tileQuietBorder : color.tileBorder,
-        },
-        style,
-      ]}
-    >
+    <View {...rest} style={[cardStyle(quiet), style]}>
       {children}
     </View>
   );

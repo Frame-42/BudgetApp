@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutAnimation, Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
-import { Amount, Card, Eyebrow, HeroCard, T, TextField } from '../components/primitives';
+import { Amount, Card, Eyebrow, FieldSurface, HeroCard, T, TextField } from '../components/primitives';
 import { Chip } from '../components/CategoryChips';
 import { CaretIcon, SearchIcon } from '../components/Icons';
 import { TransactionRow } from '../components/TransactionRow';
@@ -230,7 +230,7 @@ export function SpendScreen({
         </View>
       </HeroCard>
 
-      <View style={styles.search}>
+      <FieldSurface style={styles.search}>
         <SearchIcon color={fg(0.32)} size={15} />
         <TextField
           value={feed.searchText}
@@ -243,7 +243,7 @@ export function SpendScreen({
           clearButtonMode="while-editing"
           style={styles.searchInput}
         />
-      </View>
+      </FieldSurface>
 
       {categoriesRow(feed)}
     </View>
