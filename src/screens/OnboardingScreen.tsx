@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
-import { Card, Eyebrow, StatusDot, T, TextField } from '../components/primitives';
+import { Card, Eyebrow, FieldSurface, StatusDot, T, TextField } from '../components/primitives';
 import { BudgetAmountCard, DEFAULT_CENTS } from '../components/BudgetAmountCard';
 import { CategoryLimits, limitCentsOf, type Limits } from '../components/CategoryLimits';
 import { Chip } from '../components/CategoryChips';
@@ -221,7 +221,7 @@ export function OnboardingScreen({
 
             <View style={{ gap: 11 }}>
               <Eyebrow style={styles.label}>Name</Eyebrow>
-              <View style={styles.nameField}>
+              <FieldSurface style={styles.nameField}>
                 <TextField
                   value={name}
                   onChangeText={setName}
@@ -247,7 +247,7 @@ export function OnboardingScreen({
                     </Svg>
                   </View>
                 ) : null}
-              </View>
+              </FieldSurface>
             </View>
 
             <View style={{ gap: 13 }}>

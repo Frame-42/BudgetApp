@@ -54,6 +54,47 @@ export const readyCount = (plan: ImportPlan): number =>
   plan.rows.filter((row) => !row.skip && row.categoryId !== null && row.duplicateOf === null).length;
 
 /**
+ * The review queue as *questions* rather than rows.
+ *
+ * A month of card spending holds the same shop over and over, and "which
+ * category is Amazon?" is one decision however many rows carry it. Uncategorised
+ * rows are therefore grouped by merchant key and answered once — the answer
+ * lands on every row in the group, and the memory picks the merchant up for good
+ * on the next import.
+ *
+ * A flagged duplicate is the exception and stays one question per row: that one
+ * asks "is this the same purchase I already typed in?", which is about the
+ * individual row, and two runs to the same shop on one afternoon have to be
+ * answerable differently.
+ */
+export function reviewGroups(plan: ImportPlan): ImportRow[][] {
+  const groups: ImportRow[][] = [];
+  const byKey = new Map<string, ImportRow[]>();
+
+  for (const row of needsReview(plan)) {
+    // An empty key means nothing in the descriptor was matchable. Grouping on it
+    // would file unrelated nameless rows together under a single answer.
+    if (row.duplicateOf !== null || row.key === '') {
+      groups.push([row]);
+      continue;
+    }
+
+    const held = byKey.get(row.key);
+    if (held) {
+      // Held by reference, so a later row joins a group already in place and the
+      // queue keeps the order the merchants first appear in the file.
+      held.push(row);
+      continue;
+    }
+    const group = [row];
+    byKey.set(row.key, group);
+    groups.push(group);
+  }
+
+  return groups;
+}
+
+/**
  * What the user's own history says a merchant belongs to. Built by counting,
  * so the answer is whatever they have picked most often for that merchant.
  *

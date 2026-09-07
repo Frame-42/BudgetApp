@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Card, Eyebrow, T, TextField } from './primitives';
+import { Card, Eyebrow, FieldSurface, T, TextField } from './primitives';
 import { tapSelect } from '../haptics';
 import { euroLabel } from '../format';
 import { digits } from './BudgetAmountCard';
@@ -113,7 +113,7 @@ export function CategoryLimits({
             <T size={13} alpha={0.82} style={{ flex: 1 }}>
               {category.name}
             </T>
-            <View style={styles.limitField}>
+            <FieldSurface style={styles.limitField}>
               <TextField
                 value={limits[category.id] ?? ''}
                 onChangeText={(text) => setLimit(category.id, text)}
@@ -128,7 +128,7 @@ export function CategoryLimits({
               <T size={12} alpha={0.42}>
                 €
               </T>
-            </View>
+            </FieldSurface>
           </Card>
         ))}
       </View>

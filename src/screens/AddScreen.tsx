@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Card, Eyebrow, HeroCard, T, TextField } from '../components/primitives';
+import { cardStyle, Eyebrow, FieldSurface, HeroCard, T, TextField } from '../components/primitives';
 import { CategoryChips } from '../components/CategoryChips';
 import { Keypad } from '../components/Keypad';
 import { figure, MAX_MERCHANT_LENGTH, parseAmountToCents } from '../format';
@@ -64,7 +64,7 @@ export function AddScreen({
 
       <CategoryChips categories={categories} value={categoryId} onChange={onCategoryChange} />
 
-      <Card quiet style={styles.nameCard}>
+      <FieldSurface style={[cardStyle(true), styles.nameCard]}>
         <Eyebrow>For</Eyebrow>
         <TextField
           value={merchant}
@@ -77,7 +77,7 @@ export function AddScreen({
           size={14}
           style={{ color: color.textStrong }}
         />
-      </Card>
+      </FieldSurface>
 
       <Keypad value={amount} onChange={onAmountChange} />
 

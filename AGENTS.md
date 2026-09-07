@@ -217,6 +217,18 @@ shop on one afternoon, so dropping a match automatically would lose real spendin
 `decided` are separate fields for the same reason: a flagged duplicate starts
 skipped, so "decided" cannot be inferred from it.
 
+**Review asks per merchant, not per row.** `reviewGroups` in `src/import/plan.ts`
+collapses the uncategorised rows by `merchantKey`, so eleven Amazon charges are
+one question and the answer patches all eleven — a month of card spending is
+mostly a handful of shops repeated, and asking per row is what makes people
+abandon the file. Two rows stay ungrouped on purpose: a flagged duplicate (that
+question is "is this the same purchase I already typed in?", which is about the
+one row), and a row whose key came out empty (nothing in the descriptor was
+matchable, so grouping would file unrelated nameless rows under one answer).
+`needsReview` still counts rows and is what the "to check" stat shows; the
+"Check N" button counts questions, because that is the promise about how much
+work is ahead.
+
 **The export is the importer's format, and that is load-bearing.** `src/export/csv.ts`
 writes exactly the columns `src/import/plan.ts` reads — `datetime, amount, name,
 category, note, transaction_id` — so a file that leaves round-trips into the same
@@ -246,6 +258,22 @@ unmapped code goes to review, where one answer teaches the memory for good;
 filing it as Other would look like a decision while being the absence of one. The
 groups in `MCC_CATEGORIES` are flattened into a Map, so a code listed twice lets
 the last group silently win — 5813 was in both Dining and Leisure once already.
+**A field's whole surface is its touch target, not the text in it.** A bare
+`TextInput` answers taps across its own box only — one line of text tall, inside
+whatever padding the container carries — so the 54pt name pill in onboarding took
+taps on a band through its middle and ignored the rest, and the "For" card on Add
+ignored its label and its padding entirely. `FieldSurface` in `primitives.tsx` is
+the fix and the convention: use it in place of the `View` or `Card` around a
+field, and it forwards taps to the `TextField` under it (found through context,
+so no call site threads a ref). It wears a Card look via `cardStyle(quiet)`,
+which `Card` itself now uses so the two cannot drift. Taps landing on the input
+still reach the input, so tapping mid-word to place the cursor is unaffected.
+
+The one field deliberately left bare is `BudgetAmountCard`'s typing row: it is
+`autoFocus`ed on entry and its `onBlur` is what closes typing again, so a tap
+just outside the digits is *meant* to dismiss rather than refocus. Its 50pt
+figure is already a large target, and the non-typing state has its own Pressable.
+
 **Colour is reserved for status.** The palette is white-at-an-alpha over
 graphite, plus the two accent tints in `theme.ts` for on-track status and income.
 Introducing a new hue is a design decision, not a styling one.
@@ -256,6 +284,50 @@ Introducing a new hue is a design decision, not a styling one.
 the live simulator panel (`mcp__Claude_Code_iOS_Simulator__control`) **works**,
 touch injection included. An earlier note here said it was blocked; that is no
 longer true.
+
+**Touch injection binds to one simulator instance, at the first attach of the
+session. Boot the simulator before you attach, and never reboot it after.**
+
+Chased to the bottom on 2026-09-07. The symptom is every `tap`/`swipe` failing
+with `SimDeviceLegacyHIDClient` / "No Legacy HID port found" while `attach` and
+screenshots keep working — and the maddening part, that it works in some sessions
+and not others.
+
+The cause is a stale device handle in the tool, not anything about the Mac. The
+proof: with *only* the iOS 26.5 iPhone booted, `attach` cheerfully reported it was
+attached to the **26.4** iPhone, which was shut down at the time. It had latched
+onto that device instance at the session's first attach and never let go. Taps
+then go to a device that isn't running, and "no HID port" is the honest answer.
+
+Two consequences worth knowing:
+
+- **Rebooting does not heal it.** Boot the very device the tool named, confirm
+  `xcrun simctl io booted enumerate | grep LegacyHID` shows the port `On`, and
+  taps still fail. The handle is bound to the *instance*, so the fix is a new
+  Claude Code session — not a new simulator.
+- **The device list goes stale too.** Passing the UDID of a freshly booted device
+  the tool didn't already know returns "No simulator with UDID …".
+
+So the working order is: boot the simulator, let it settle, `attach`, and then
+leave it alone. A single `simctl shutdown` or `simctl boot` mid-session costs you
+touch injection until you start a new session.
+
+Ruled out, so nobody re-runs these: which process booted the device (Simulator.app
+vs `simctl boot` — tested both, clean, in every order), the runtime version (26.4
+and 26.5 behave identically), whether Simulator.app is running, whether it is
+focused, and whether `attach` was called before the first tap. None of them
+matter, and Xcode 26.6 still ships `SimDeviceLegacyHIDClient`, so nothing has been
+removed.
+
+`xcrun simctl io booted screenshot` never goes through that handle and so never
+breaks — it stays the reliable check. To reach a screen you cannot tap your way
+to, temporarily change the initial state (`App.tsx`'s `tab`, an `if (true || …)`
+on the onboarding gate, `OnboardingScreen`'s `step`), shoot it, and revert. Don't
+delete the simulator's `budget.db` to force a first run — that is the developer's
+own data.
+
+Note that two devices are called "iPhone 17 Pro", one per runtime. Always identify
+a simulator by UDID, never by name.
 
 Two things about the panel that cost time on 2026-09-02:
 

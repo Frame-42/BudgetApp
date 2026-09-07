@@ -9,7 +9,7 @@ import { morph } from '../motion';
 import { tapDone, tapSelect, tapWarn } from '../haptics';
 import { amountLabel } from '../format';
 import { shortDate } from '../time';
-import { needsReview, readyCount, type ImportPlan, type ImportRow } from '../import/plan';
+import { needsReview, readyCount, reviewGroups, type ImportPlan, type ImportRow } from '../import/plan';
 import { color, fg, radius, w } from '../theme';
 
 type Mode = 'pick' | 'preview' | 'review' | 'done';
@@ -17,10 +17,14 @@ type Mode = 'pick' | 'preview' | 'review' | 'done';
 /**
  * Transaction import, one sheet for the whole flow.
  *
- * The review step walks one row at a time rather than listing everything: the
- * sheet's card deliberately isn't a ScrollView (see Sheet.tsx), and a stepper
- * sidesteps that entirely instead of reworking the drag for a list that is
- * usually two rows long.
+ * The review step walks one question at a time rather than listing everything:
+ * the sheet's card deliberately isn't a ScrollView (see Sheet.tsx), and a
+ * stepper sidesteps that entirely instead of reworking the drag for a list that
+ * is usually two questions long.
+ *
+ * A question is a group of rows, not a row — see `reviewGroups`. Eleven Amazon
+ * charges are one thing to decide, and asking eleven times is the difference
+ * between a minute of tapping and a file the user gives up on.
  */
 export function ImportSheet({
   visible,
@@ -40,8 +44,8 @@ export function ImportSheet({
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   /* Fixed when review starts: recomputing would shrink the list underfoot as
-     each row is resolved, and "3 of 5" would stop meaning anything. */
-  const [queue, setQueue] = useState<ImportRow[]>([]);
+     each question is answered, and "3 of 5" would stop meaning anything. */
+  const [queue, setQueue] = useState<ImportRow[][]>([]);
   const [at, setAt] = useState(0);
   const [imported, setImported] = useState(0);
 
@@ -90,19 +94,20 @@ export function ImportSheet({
     if (!plan) return;
     tapSelect();
     morph();
-    setQueue(needsReview(plan));
+    setQueue(reviewGroups(plan));
     setAt(0);
     setMode('review');
   };
 
+  /* One answer, applied to every row the question covered. */
   const resolve = (change: Partial<ImportRow>) => {
-    const row = queue[at];
+    const answered = new Set(queue[at].map((row) => row.externalId));
     const patch = { ...change, decided: true };
     setPlan((current) =>
       current
         ? {
             ...current,
-            rows: current.rows.map((r) => (r.externalId === row.externalId ? { ...r, ...patch } : r)),
+            rows: current.rows.map((r) => (answered.has(r.externalId) ? { ...r, ...patch } : r)),
           }
         : current,
     );
@@ -130,6 +135,9 @@ export function ImportSheet({
 
   const ready = plan ? readyCount(plan) : 0;
   const outstanding = plan ? needsReview(plan).length : 0;
+  /* The button promises how much work is ahead, so it counts questions, while
+     the stat beside it counts transactions like every other figure there. */
+  const questions = plan ? reviewGroups(plan).length : 0;
 
   return (
     <Sheet visible onClose={onClose}>
@@ -195,7 +203,7 @@ export function ImportSheet({
               style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
             >
               <T size={14} style={{ color: color.textStrong }}>
-                Check {outstanding}
+                Check {questions}
               </T>
             </Pressable>
           ) : null}
@@ -225,7 +233,7 @@ export function ImportSheet({
 
       {mode === 'review' && queue[at] ? (
         <ReviewRow
-          row={queue[at]}
+          group={queue[at]}
           categories={categories}
           onAssign={(categoryId) => resolve({ categoryId, duplicateOf: null, skip: false })}
           onSkip={() => resolve({ skip: true })}
@@ -270,18 +278,34 @@ function Count({ value, label, quiet }: { value: number; label: string; quiet?: 
   );
 }
 
-/** The two things a row can need: a category, or a verdict on a near-match. */
+/**
+ * The two things a question can need: a category, or a verdict on a near-match.
+ *
+ * `group` is every row this one answer will cover — one row for a flagged
+ * duplicate, and as many as the file holds for a merchant nothing matched. The
+ * figures are summed across it so the card describes what is actually being
+ * decided rather than whichever charge happened to come first.
+ */
 function ReviewRow({
-  row,
+  group,
   categories,
   onAssign,
   onSkip,
 }: {
-  row: ImportRow;
+  group: ImportRow[];
   categories: { id: string; name: string }[];
   onAssign: (categoryId: string) => void;
   onSkip: () => void;
 }) {
+  const row = group[0];
+  const many = group.length > 1;
+  const total = group.reduce((sum, one) => sum + one.amountCents, 0);
+  // Min and max rather than first and last: an export is not always in date order.
+  const dates = group.map((one) => one.occurredAt);
+  const from = shortDate(Math.min(...dates));
+  const to = shortDate(Math.max(...dates));
+  const span = from === to ? from : `${from} – ${to}`;
+
   return (
     <View style={{ gap: 12 }}>
       <View style={styles.rowHead}>
@@ -289,10 +313,10 @@ function ReviewRow({
           <T size={14} style={{ color: color.textStrong }} numberOfLines={1}>
             {row.merchant}
           </T>
-          <Eyebrow alpha={0.3}>{shortDate(row.occurredAt)}</Eyebrow>
+          <Eyebrow alpha={0.3}>{many ? `${group.length} × · ${span}` : span}</Eyebrow>
         </View>
         <T size={14} tracking={-0.02} alpha={0.72}>
-          {amountLabel(row.amountCents)}
+          {amountLabel(total)}
         </T>
       </View>
 
@@ -322,12 +346,14 @@ function ReviewRow({
       ) : (
         <>
           <T size={12.5} alpha={0.55}>
-            No rule matched this one.
+            {many
+              ? `No rule matched these ${group.length} — one answer files them all.`
+              : 'No rule matched this one.'}
           </T>
           <CategoryChips categories={categories} value={row.categoryId} onChange={onAssign} />
           <Pressable accessibilityRole="button" onPress={onSkip} style={styles.quiet} hitSlop={8}>
             <T size={12.5} alpha={0.4}>
-              Don't import it
+              {many ? "Don't import them" : "Don't import it"}
             </T>
           </Pressable>
         </>
