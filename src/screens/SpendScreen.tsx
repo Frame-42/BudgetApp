@@ -31,7 +31,7 @@ const periodLabel = (period: Period) => {
   return `${MONTH_ABBR[d.getMonth()]} ${d.getFullYear()}`;
 };
 
-/** Adjacent labels travel with the finger, before the selected period changes. */
+/** Adjacent labels travel with the finger before the selected period changes. */
 function SwipePeriod({ feed, onPress, swiping, onSwipingChange }: {
   feed: TransactionFeed;
   onPress: () => void;
@@ -41,25 +41,29 @@ function SwipePeriod({ feed, onPress, swiping, onSwipingChange }: {
   const { period, canStepBack, canStepForward } = feed;
   const offset = useRef(new Animated.Value(0)).current;
   const settling = useRef(false);
+  const dragStart = useRef(0);
+  const pendingMonth = useRef<number | null>(null);
+  const continuation = useRef<{ month: number; offset: number } | null>(null);
+  const chained = useRef(false);
   const [width, setWidth] = useState(0);
-  // Include both arrow slots and the pill padding, without changing its layout.
   const pageWidth = width + 2 * (26 + 4);
   const settle = useCallback((toValue: number, velocity = 0) => Animated.spring(offset, {
-    toValue,
-    velocity,
-    stiffness: 280,
-    damping: 32,
-    mass: 0.8,
-    overshootClamping: true,
-    restDisplacementThreshold: 0.1,
-    restSpeedThreshold: 0.1,
-    // Keep the final position and the replacement label in the same render cycle.
+    toValue, velocity, stiffness: 280, damping: 32, mass: 0.8,
+    overshootClamping: true, restDisplacementThreshold: 0.1, restSpeedThreshold: 0.1,
     useNativeDriver: false,
   }), [offset]);
   useLayoutEffect(() => {
+    const carried = continuation.current;
+    continuation.current = null;
+    if (period.kind === 'month' && carried?.month === period.start) {
+      offset.setValue(carried.offset);
+      return;
+    }
     offset.stopAnimation();
     offset.setValue(0);
+    dragStart.current = 0;
     settling.current = false;
+    pendingMonth.current = null;
     onSwipingChange(false);
   }, [period, offset, onSwipingChange]);
   useEffect(() => () => {
@@ -71,26 +75,45 @@ function SwipePeriod({ feed, onPress, swiping, onSwipingChange }: {
   latest.current = { period, canStepBack, canStepForward, width: pageWidth, stepMonth: feed.stepMonth };
   const pan = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponderCapture: (_, g) =>
-      latest.current.period.kind === 'month' && latest.current.width > 0 && !settling.current && Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      latest.current.period.kind === 'month' && latest.current.width > 0 && Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
     onPanResponderGrant: () => {
-      offset.stopAnimation();
+      const delta = pendingMonth.current;
+      pendingMonth.current = null;
+      chained.current = delta !== null;
+      offset.stopAnimation((value) => {
+        const { period, width, stepMonth } = latest.current;
+        if (delta !== null && period.kind === 'month') {
+          // Rebase around the incoming month without moving any visible letters.
+          // The next gesture can now advance beyond it before the spring rests.
+          const rebased = value + delta * width;
+          dragStart.current = rebased;
+          continuation.current = { month: addMonths(period.start, delta), offset: rebased };
+          stepMonth(delta);
+          tapSelect();
+        } else dragStart.current = value;
+      });
+      settling.current = false;
       onSwipingChange(true);
     },
     onPanResponderMove: (_, g) => {
       const { canStepBack, canStepForward, width } = latest.current;
-      const allowed = g.dx > 0 ? canStepBack : canStepForward;
-      offset.setValue(allowed ? Math.max(-width, Math.min(width, g.dx)) : Math.sign(g.dx) * 12 * (1 - Math.exp(-Math.abs(g.dx) / 100)));
+      const distance = dragStart.current + g.dx;
+      const allowed = distance > 0 ? canStepBack : canStepForward;
+      offset.setValue(allowed ? Math.max(-width, Math.min(width, distance)) : Math.sign(distance) * 12 * (1 - Math.exp(-Math.abs(distance) / 100)));
     },
     onPanResponderRelease: (_, g) => {
       const { canStepBack, canStepForward, width, stepMonth } = latest.current;
-      const delta = g.dx > 0 ? -1 : 1;
+      const distance = dragStart.current + g.dx;
+      const intent = chained.current ? g.dx : distance;
+      const delta = intent > 0 ? -1 : 1;
       const allowed = delta === -1 ? canStepBack : canStepForward;
-      const commit = allowed && (Math.abs(g.dx) > width * 0.3 || (Math.abs(g.dx) > 10 && Math.abs(g.vx) > 0.5 && g.dx * g.vx > 0));
+      const commit = allowed && (Math.abs(intent) > width * 0.3 || (Math.abs(g.dx) > 10 && Math.abs(g.vx) > 0.5 && g.dx * g.vx > 0));
+      pendingMonth.current = commit ? delta : null;
       settling.current = true;
-      // Carry the finger's velocity into the release instead of starting a new ease.
-      const velocity = Math.abs(g.dx) >= width ? 0 : Math.max(-1200, Math.min(1200, g.vx * 1000));
+      const velocity = Math.abs(distance) >= width ? 0 : Math.max(-1200, Math.min(1200, g.vx * 1000));
       settle(commit ? -delta * width : 0, velocity).start(({ finished }) => {
         if (!finished) return;
+        pendingMonth.current = null;
         if (commit) {
           tapSelect();
           stepMonth(delta);
@@ -102,6 +125,7 @@ function SwipePeriod({ feed, onPress, swiping, onSwipingChange }: {
     },
     onPanResponderTerminationRequest: () => false,
     onPanResponderTerminate: () => {
+      pendingMonth.current = null;
       settling.current = true;
       settle(0).start(({ finished }) => {
         if (!finished) return;
@@ -228,6 +252,15 @@ export function SpendScreen({
   /* The period pill has two shapes: the stepper, and the choices it opens onto. */
   const [expanded, setExpanded] = useState(false);
   const [swipingMonth, setSwipingMonth] = useState(false);
+  const chevronTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSwipingChange = useCallback((active: boolean) => {
+    if (chevronTimer.current) clearTimeout(chevronTimer.current);
+    if (active) setSwipingMonth(true);
+    else chevronTimer.current = setTimeout(() => setSwipingMonth(false), 220);
+  }, []);
+  useEffect(() => () => {
+    if (chevronTimer.current) clearTimeout(chevronTimer.current);
+  }, []);
   const [picking, setPicking] = useState(false);
 
   const collapse = () => {
@@ -295,7 +328,7 @@ export function SpendScreen({
           ) : (
             <>
               <Step direction="back" hidden={swipingMonth} enabled={feed.canStepBack} onPress={() => feed.stepMonth(-1)} />
-              <SwipePeriod feed={feed} swiping={swipingMonth} onSwipingChange={setSwipingMonth}
+              <SwipePeriod feed={feed} swiping={swipingMonth} onSwipingChange={handleSwipingChange}
                 onPress={() => {
                   tapSelect();
                   morph();
