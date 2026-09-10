@@ -134,3 +134,7 @@ export const categoryForMcc = (mcc: string): string | null => BY_CODE.get(mcc.tr
  */
 export const isSecuritiesPurchase = (row: { type: string; category: string }): boolean =>
   row.type.trim().toUpperCase() === 'BUY' || row.category.trim().toUpperCase() === 'TRADING';
+
+/** SAVEBACK investment contributions are not spending in the budget. */
+export const isSavebackInvestment = (type: string): boolean =>
+  type.trim().toUpperCase() === 'BENEFITS_SAVEBACK';

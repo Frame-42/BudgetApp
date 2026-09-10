@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutAnimation, Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Animated, LayoutAnimation, PanResponder, Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
 import { Amount, Card, Eyebrow, FieldSurface, HeroCard, T, TextField } from '../components/primitives';
 import { Chip } from '../components/CategoryChips';
 import { CaretIcon, SearchIcon } from '../components/Icons';
@@ -11,7 +11,7 @@ import type { SplitEdit, SplitTarget } from '../db/split';
 import type { TransactionItem } from '../queries/transactions';
 import type { Period, TransactionFeed } from '../state/useTransactionFeed';
 import { figure } from '../format';
-import { MONTH_ABBR, startOfMonth } from '../time';
+import { addMonths, MONTH_ABBR, startOfMonth } from '../time';
 import { GUTTER, color, fg, radius, w } from '../theme';
 
 /** The same 280ms ease the tab bar uses, so the pill's morph matches the app. */
@@ -31,13 +31,123 @@ const periodLabel = (period: Period) => {
   return `${MONTH_ABBR[d.getMonth()]} ${d.getFullYear()}`;
 };
 
+/** Adjacent labels travel with the finger, before the selected period changes. */
+function SwipePeriod({ feed, onPress, swiping, onSwipingChange }: {
+  feed: TransactionFeed;
+  onPress: () => void;
+  swiping: boolean;
+  onSwipingChange: (swiping: boolean) => void;
+}) {
+  const { period, canStepBack, canStepForward } = feed;
+  const offset = useRef(new Animated.Value(0)).current;
+  const settling = useRef(false);
+  const [width, setWidth] = useState(0);
+  // Include both arrow slots and the pill padding, without changing its layout.
+  const pageWidth = width + 2 * (26 + 4);
+  const settle = useCallback((toValue: number, velocity = 0) => Animated.spring(offset, {
+    toValue,
+    velocity,
+    stiffness: 280,
+    damping: 32,
+    mass: 0.8,
+    overshootClamping: true,
+    restDisplacementThreshold: 0.1,
+    restSpeedThreshold: 0.1,
+    // Keep the final position and the replacement label in the same render cycle.
+    useNativeDriver: false,
+  }), [offset]);
+  useLayoutEffect(() => {
+    offset.stopAnimation();
+    offset.setValue(0);
+    settling.current = false;
+    onSwipingChange(false);
+  }, [period, offset, onSwipingChange]);
+  useEffect(() => () => {
+    offset.stopAnimation();
+    onSwipingChange(false);
+  }, [offset, onSwipingChange]);
+
+  const latest = useRef({ period, canStepBack, canStepForward, width: pageWidth, stepMonth: feed.stepMonth });
+  latest.current = { period, canStepBack, canStepForward, width: pageWidth, stepMonth: feed.stepMonth };
+  const pan = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponderCapture: (_, g) =>
+      latest.current.period.kind === 'month' && latest.current.width > 0 && !settling.current && Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+    onPanResponderGrant: () => {
+      offset.stopAnimation();
+      onSwipingChange(true);
+    },
+    onPanResponderMove: (_, g) => {
+      const { canStepBack, canStepForward, width } = latest.current;
+      const allowed = g.dx > 0 ? canStepBack : canStepForward;
+      offset.setValue(allowed ? Math.max(-width, Math.min(width, g.dx)) : Math.sign(g.dx) * 12 * (1 - Math.exp(-Math.abs(g.dx) / 100)));
+    },
+    onPanResponderRelease: (_, g) => {
+      const { canStepBack, canStepForward, width, stepMonth } = latest.current;
+      const delta = g.dx > 0 ? -1 : 1;
+      const allowed = delta === -1 ? canStepBack : canStepForward;
+      const commit = allowed && (Math.abs(g.dx) > width * 0.3 || (Math.abs(g.dx) > 10 && Math.abs(g.vx) > 0.5 && g.dx * g.vx > 0));
+      settling.current = true;
+      // Carry the finger's velocity into the release instead of starting a new ease.
+      const velocity = Math.abs(g.dx) >= width ? 0 : Math.max(-1200, Math.min(1200, g.vx * 1000));
+      settle(commit ? -delta * width : 0, velocity).start(({ finished }) => {
+        if (!finished) return;
+        if (commit) {
+          tapSelect();
+          stepMonth(delta);
+        } else {
+          settling.current = false;
+          onSwipingChange(false);
+        }
+      });
+    },
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderTerminate: () => {
+      settling.current = true;
+      settle(0).start(({ finished }) => {
+        if (!finished) return;
+        settling.current = false;
+        onSwipingChange(false);
+      });
+    },
+  }), [offset, settle, onSwipingChange]);
+
+  return (
+    <View {...pan.panHandlers} style={period.kind === 'month' ? { overflow: swiping ? 'visible' : 'hidden' } : undefined}>
+      <Pressable accessibilityRole="button"
+        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+        accessibilityLabel={`Showing ${periodLabel(period)}. Opens the period choices.`}
+        accessibilityHint={period.kind === 'month' ? 'Swipe left or right to change month.' : undefined}
+        onPress={() => { if (!settling.current) onPress(); }}
+        style={({ pressed }) => [styles.period, period.kind !== 'month' && pressed && styles.stepPressed]}>
+        <T weight="monoMedium" size={10.5} tracking={0.06} alpha={0.62}
+          style={period.kind === 'month' && width > 0 ? { opacity: 0 } : undefined}>
+          {periodLabel(period).toUpperCase()}
+        </T>
+        {period.kind === 'month' && width > 0 ? (
+          <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', top: 0, bottom: 0, alignItems: 'center', left: -pageWidth - (pageWidth - width) / 2, width: pageWidth * 3, flexDirection: 'row', transform: [{ translateX: offset }] }}>
+            {[-1, 0, 1].map((delta) => (
+              <View key={delta} style={{ width: pageWidth, alignItems: 'center' }}>
+                <T weight="monoMedium" size={10.5} tracking={0.06} alpha={0.62}>
+                  {(delta === -1 && !canStepBack) || (delta === 1 && !canStepForward) ? '' : periodLabel({ kind: 'month', start: addMonths(period.start, delta) }).toUpperCase()}
+                </T>
+              </View>
+            ))}
+          </Animated.View>
+        ) : null}
+      </Pressable>
+    </View>
+  );
+}
+
 function Step({
   direction,
   enabled,
+  hidden = false,
   onPress,
 }: {
   direction: 'back' | 'forward';
   enabled: boolean;
+  hidden?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -45,12 +155,14 @@ function Step({
       accessibilityRole="button"
       accessibilityLabel={direction === 'back' ? 'Previous month' : 'Next month'}
       accessibilityState={{ disabled: !enabled }}
-      disabled={!enabled}
+      disabled={!enabled || hidden}
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
       onPress={() => {
         tapSelect();
         onPress();
       }}
-      style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+      style={({ pressed }) => [styles.step, pressed && styles.stepPressed, hidden && { opacity: 0 }]}
     >
       {/* The app's one caret points down; turn it onto its side. */}
       <View style={{ transform: [{ rotate: direction === 'back' ? '90deg' : '-90deg' }] }}>
@@ -115,6 +227,7 @@ export function SpendScreen({
   const open = useCallback((item: TransactionItem) => setSelected(item), []);
   /* The period pill has two shapes: the stepper, and the choices it opens onto. */
   const [expanded, setExpanded] = useState(false);
+  const [swipingMonth, setSwipingMonth] = useState(false);
   const [picking, setPicking] = useState(false);
 
   const collapse = () => {
@@ -181,22 +294,15 @@ export function SpendScreen({
             </>
           ) : (
             <>
-              <Step direction="back" enabled={feed.canStepBack} onPress={() => feed.stepMonth(-1)} />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Showing ${periodLabel(period)}. Opens the period choices.`}
+              <Step direction="back" hidden={swipingMonth} enabled={feed.canStepBack} onPress={() => feed.stepMonth(-1)} />
+              <SwipePeriod feed={feed} swiping={swipingMonth} onSwipingChange={setSwipingMonth}
                 onPress={() => {
                   tapSelect();
                   morph();
                   setExpanded(true);
                 }}
-                style={({ pressed }) => [styles.period, pressed && styles.stepPressed]}
-              >
-                <T weight="monoMedium" size={10.5} tracking={0.06} alpha={0.62}>
-                  {periodLabel(period).toUpperCase()}
-                </T>
-              </Pressable>
-              <Step direction="forward" enabled={feed.canStepForward} onPress={() => feed.stepMonth(1)} />
+              />
+              <Step direction="forward" hidden={swipingMonth} enabled={feed.canStepForward} onPress={() => feed.stepMonth(1)} />
             </>
           )}
         </View>
@@ -356,6 +462,7 @@ const styles = StyleSheet.create({
   },
   stepperOpen: { flex: 1, paddingHorizontal: 6 },
   stepper: {
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

@@ -130,6 +130,7 @@ function Phone() {
         showHint={!data.monthPicked}
         categoryIds={trends.categoryIds}
         onToggleCategories={trends.toggleCategories}
+        onClearCategories={trends.clearCategories}
         onPickMonth={notePickedMonth}
         onSeeTransactions={seeTransactions}
       />

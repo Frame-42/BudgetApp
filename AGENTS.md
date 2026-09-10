@@ -20,11 +20,12 @@ plugin) were reshaped after SDK 50.
 npm install
 npx expo start --ios     # Expo Go — the fast loop, still works
 npm run ios              # expo run:ios — compiles and installs the dev build
-npx tsc --noEmit         # the only check that exists; keep it clean
+npm test                 # focused pure-function tests via jest-expo
+npx tsc --noEmit         # typecheck; keep it clean
 ```
 
-There is no test runner and no linter configured. `src/queries/` is written as
-pure functions specifically so `jest-expo` can be added later without rework.
+There is no linter configured. Keep query and geometry helpers pure so they can
+be covered without a simulator.
 
 ## Native builds are possible now; Expo Go is still the fast loop
 
@@ -247,8 +248,18 @@ filter the count and empty months turn grey and unpickable. The split query
 stays unfiltered too, or selecting a category would redraw the ring as 100% of
 itself with no way to add a second; selection is drawn by dimming instead.
 
+**Trends loads one current snapshot.** `loadTrends` builds the 3M, 6M and 1Y
+views from one set of source rows, and the screen switches between those
+precomputed spans locally. The bars, pace and split reads run through one
+`withExclusiveTransactionAsync` transaction handle so they all describe one WAL
+snapshot on native; web uses `withTransactionAsync` because Expo does not support
+the exclusive API there. Don't move those statements back to independent calls.
+
 **Spend scrolls itself.** A `SectionList` cannot nest in `App.tsx`'s shared
 `ScrollView`, so `SCROLLS[tab]` hands Spend the insets and gets out of the way.
+Its month stepper and picker stop at the current month even when a split purchase
+has materialised future rows; those rows still count in balances, but a future
+Spend page is not a valid browsing period.
 
 **The importer decides nothing twice.** `transactions.external_id` (migration v2)
 holds the bank's own id, and a row whose id is already present is skipped
@@ -288,9 +299,11 @@ makes re-importing an export idempotent. `datetime` is local ISO with the offset
 UTC date of the day before, and off-by-one dates in a budget app are worse than
 no export. Amounts are decimal euros in the file and cents everywhere else.
 
-**Merchant memory outranks the MCC table.** `src/import/rules.ts` resolves in the
-order: securities purchase → what the user has previously chosen for that
-merchant → a `category` column naming a category we have → MCC → review. The
+**Merchant memory outranks the MCC table.** A row whose type is
+`BENEFITS_SAVEBACK` is excluded first: the investment contribution is not
+spending. `src/import/rules.ts` resolves every other row in the order: securities
+purchase → what the user has previously chosen for that merchant → a `category`
+column naming a category we have → MCC → review. The
 category column sits *below* the memory deliberately: in a bank's file that
 column is the bank's guess, and a guess must not outrank a decision the user
 made. On a restore into an empty app the memory is empty, so it still wins there. A code is a guess about a business; the memory is a

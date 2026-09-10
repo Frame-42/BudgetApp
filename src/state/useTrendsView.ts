@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { getDb } from '../db/client';
 import { loadTrends, type TrendsBundle } from '../queries/trends';
@@ -14,9 +15,9 @@ export type TrendsView = {
 
 /**
  * Trends' own slice of state, for the same reason Spend has one: `loadTrends`
- * now takes a category selection, and the provider's snapshot only holds queries
- * that take no arguments. Span and month selection stay in the screen — they
- * never reach SQL, and every span is precomputed in one pass.
+ * takes a category selection, and the provider's snapshot only holds queries
+ * that take no arguments. Span and month selection stay in the screen, and
+ * every span is precomputed in one pass.
  */
 export function useTrendsView(): TrendsView {
   const [data, setData] = useState<TrendsBundle | null>(null);
@@ -50,6 +51,13 @@ export function useTrendsView(): TrendsView {
     };
   }, []);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setRevision((r) => r + 1);
+    });
+    return () => subscription.remove();
+  }, []);
+
   /**
    * A legend row stands for one category, or — when it is the rolled-up "Other"
    * — for several, so a toggle takes a set. It turns the whole set on unless the
@@ -58,7 +66,9 @@ export function useTrendsView(): TrendsView {
   const toggleCategories = useCallback((ids: string[]) => {
     setCategoryIds((current) => {
       const on = ids.every((id) => current.includes(id));
-      return on ? current.filter((id) => !ids.includes(id)) : [...current, ...ids.filter((id) => !current.includes(id))];
+      return on
+        ? current.filter((id) => !ids.includes(id))
+        : [...current, ...ids.filter((id) => !current.includes(id))];
     });
   }, []);
 

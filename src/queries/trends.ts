@@ -1,5 +1,12 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { MONTH_ABBR, addMonths, daysInMonth, monthKey } from '../time';
+import { Platform } from 'react-native';
+import {
+  MONTH_ABBR,
+  addMonths,
+  daysInMonth,
+  monthKey,
+  startOfNextMonth,
+} from '../time';
 
 export type Share = {
   name: string;
@@ -87,13 +94,31 @@ export type TrendsBundle = Record<TrendSpan, TrendsData>;
 
 type SplitRow = { id: string; name: string; alpha: number; total: number };
 
+const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Integer percentages that preserve the weights and add up to exactly 100. */
+export function apportionPercentages(weights: number[]): number[] {
+  const total = weights.reduce((sum, weight) => sum + Math.max(0, weight), 0);
+  if (total === 0) return weights.map(() => 0);
+
+  const exact = weights.map((weight) => (Math.max(0, weight) / total) * 100);
+  const result = exact.map(Math.floor);
+  const remaining = 100 - result.reduce((sum, percent) => sum + percent, 0);
+  const byRemainder = exact
+    .map((percent, index) => ({ index, remainder: percent - result[index] }))
+    .sort((a, b) => b.remainder - a.remainder || weights[b.index] - weights[a.index] || a.index - b.index);
+  for (let i = 0; i < remaining; i++) result[byRemainder[i].index]++;
+  return result;
+}
+
 /** Top four categories by spend, with the tail rolled into "Other". */
-function toSplit(rows: SplitRow[]): Share[] {
-  const ranked = [...rows].sort((a, b) => b.total - a.total);
-  const total = Math.max(1, ranked.reduce((sum, r) => sum + r.total, 0));
+export function toSplit(rows: SplitRow[]): Share[] {
+  const ranked = [...rows].sort(
+    (a, b) => b.total - a.total || compareText(a.name, b.name) || compareText(a.id, b.id),
+  );
   const shares: Share[] = ranked.slice(0, 4).map((r) => ({
     name: r.name,
-    percent: Math.round((r.total / total) * 100),
+    percent: 0,
     alpha: r.alpha,
     totalCents: r.total,
     categoryIds: [r.id],
@@ -109,26 +134,32 @@ function toSplit(rows: SplitRow[]): Share[] {
     const named = shares.find((share) => share.name === 'Other');
     if (named) {
       named.totalCents += restTotal;
-      named.percent = Math.round((named.totalCents / total) * 100);
       named.categoryIds = [...named.categoryIds, ...rest.map((r) => r.id)];
     } else {
       shares.push({
         name: 'Other',
-        percent: Math.round((restTotal / total) * 100),
+        percent: 0,
         alpha: 0.16,
         totalCents: restTotal,
         categoryIds: rest.map((r) => r.id),
       });
     }
   }
+
+  shares.sort(
+    (a, b) =>
+      b.totalCents - a.totalCents ||
+      compareText(a.name, b.name) ||
+      compareText(a.categoryIds.join('\0'), b.categoryIds.join('\0')),
+  );
+  const percentages = apportionPercentages(shares.map((share) => share.totalCents));
+  shares.forEach((share, index) => {
+    share.percent = percentages[index];
+  });
   return shares;
 }
 
-/**
- * The Trends screen: three, six or twelve months of shape, each month able to
- * stand on its own. The rows are read once over the longest span and every view
- * is built from them, so switching span costs nothing.
- */
+/** All three current Trends spans from one bounded database snapshot. */
 export async function loadTrends(
   db: SQLiteDatabase,
   at: number = Date.now(),
@@ -139,42 +170,76 @@ export async function loadTrends(
    * must not: a month with no Groceries is a month with no Groceries, not the
    * missing data `present` stands for. So the predicate goes inside the sums
    * rather than into the WHERE of the query that counts entries.
-   */
+  */
   const chosen = categoryIds.length ? `category_id IN (${categoryIds.map(() => '?').join(', ')})` : '1';
   /** One month further back than the widest row shows, so its oldest bar has a pace line to sit over. */
-  const withLeadIn = addMonths(at, -WIDEST);
+  const sourceStart = addMonths(at, -WIDEST);
+  const sourceEnd = startOfNextMonth(at);
 
-  // Counted over every transaction, not just spending, so a month that holds
-  // only income still counts as a month that was recorded.
-  const rows = await db.getAllAsync<{
+  let rows: {
     month: string;
     entries: number;
     matches: number;
     total: number;
-  }>(
-    `SELECT strftime('%Y-%m', occurred_at / 1000, 'unixepoch', 'localtime') AS month,
-            COUNT(*) AS entries,
-            SUM(CASE WHEN ${chosen} THEN 1 ELSE 0 END) AS matches,
-            IFNULL(SUM(CASE WHEN amount_cents < 0 AND ${chosen} THEN -amount_cents END), 0) AS total
-       FROM transactions
-      WHERE deleted_at IS NULL AND occurred_at >= ?
-      GROUP BY month`,
-    [...categoryIds, ...categoryIds, withLeadIn],
-  );
+  }[] = [];
+  let daily: { month: string; day: number; total: number }[] = [];
+  let splitRows: ({ month: string } & SplitRow)[] = [];
+
+  const read = async (txn: SQLiteDatabase) => {
+    // Counted over every transaction, not just spending, so a month that holds
+    // only income still counts as a month that was recorded.
+    [rows, daily, splitRows] = await Promise.all([
+      txn.getAllAsync<{
+        month: string;
+        entries: number;
+        matches: number;
+        total: number;
+      }>(
+        `SELECT strftime('%Y-%m', occurred_at / 1000, 'unixepoch', 'localtime') AS month,
+              COUNT(*) AS entries,
+              SUM(CASE WHEN ${chosen} THEN 1 ELSE 0 END) AS matches,
+              IFNULL(SUM(CASE WHEN amount_cents < 0 AND ${chosen} THEN -amount_cents END), 0) AS total
+         FROM transactions
+        WHERE deleted_at IS NULL AND occurred_at >= ? AND occurred_at < ?
+        GROUP BY month`,
+        [...categoryIds, ...categoryIds, sourceStart, sourceEnd],
+      ),
+      txn.getAllAsync<{ month: string; day: number; total: number }>(
+        `SELECT strftime('%Y-%m', occurred_at / 1000, 'unixepoch', 'localtime') AS month,
+              CAST(strftime('%d', occurred_at / 1000, 'unixepoch', 'localtime') AS INTEGER) AS day,
+              IFNULL(SUM(-amount_cents), 0) AS total
+         FROM transactions
+        WHERE deleted_at IS NULL AND amount_cents < 0 AND ${chosen}
+          AND occurred_at >= ? AND occurred_at < ?
+        GROUP BY month, day`,
+        [...categoryIds, sourceStart, sourceEnd],
+      ),
+      txn.getAllAsync<{ month: string } & SplitRow>(
+        `SELECT strftime('%Y-%m', t.occurred_at / 1000, 'unixepoch', 'localtime') AS month,
+              c.id, c.name, c.color_alpha AS alpha, IFNULL(SUM(-t.amount_cents), 0) AS total
+         FROM transactions t
+         JOIN categories c ON c.id = t.category_id
+        WHERE t.deleted_at IS NULL AND t.amount_cents < 0
+          AND t.occurred_at >= ? AND t.occurred_at < ?
+        GROUP BY month, c.id`,
+        [sourceStart, sourceEnd],
+      ),
+    ]);
+  };
+
+  // Native gets an isolated transaction handle. Expo SQLite does not support
+  // that API on web, where the ordinary transaction is still preferable to
+  // three unrelated reads.
+  if (Platform.OS === 'web') {
+    await db.withTransactionAsync(() => read(db));
+  } else {
+    await db.withExclusiveTransactionAsync(read);
+  }
   const totals = new Map(rows.map((r) => [r.month, r.total]));
   const matches = new Map(rows.map((r) => [r.month, r.matches]));
   const recorded = new Set(rows.filter((r) => r.entries > 0).map((r) => r.month));
 
   // --- pace: every month's cumulative curve, in one pass ----------------------
-  const daily = await db.getAllAsync<{ month: string; day: number; total: number }>(
-    `SELECT strftime('%Y-%m', occurred_at / 1000, 'unixepoch', 'localtime') AS month,
-            CAST(strftime('%d', occurred_at / 1000, 'unixepoch', 'localtime') AS INTEGER) AS day,
-            IFNULL(SUM(-amount_cents), 0) AS total
-       FROM transactions
-      WHERE deleted_at IS NULL AND amount_cents < 0 AND ${chosen} AND occurred_at >= ?
-      GROUP BY month, day`,
-    [...categoryIds, withLeadIn],
-  );
   const byMonthDay = new Map<string, Map<number, number>>();
   for (const row of daily) {
     const days = byMonthDay.get(row.month) ?? new Map<number, number>();
@@ -195,25 +260,19 @@ export async function loadTrends(
   // --- where it goes, per month ----------------------------------------------
   /* Deliberately unfiltered: selecting a category must not redraw the donut as
      100% of itself, or there would be no way to add a second. */
-  const splitRows = await db.getAllAsync<{ month: string } & SplitRow>(
-    `SELECT strftime('%Y-%m', t.occurred_at / 1000, 'unixepoch', 'localtime') AS month,
-            c.id, c.name, c.color_alpha AS alpha, IFNULL(SUM(-t.amount_cents), 0) AS total
-       FROM transactions t
-       JOIN categories c ON c.id = t.category_id
-      WHERE t.deleted_at IS NULL AND t.amount_cents < 0 AND t.occurred_at >= ?
-      GROUP BY month, c.id`,
-    [withLeadIn],
-  );
   const splitByMonth = new Map<string, SplitRow[]>();
   for (const row of splitRows) {
     splitByMonth.set(row.month, [...(splitByMonth.get(row.month) ?? []), row]);
   }
 
-  const build = (span: TrendSpan): TrendsData => {
-    const stamps = Array.from({ length: span }, (_, i) => addMonths(at, -(span - 1 - i)));
+  const build = (viewSpan: TrendSpan): TrendsData => {
+    const stamps = Array.from(
+      { length: viewSpan },
+      (_, i) => addMonths(at, -(viewSpan - 1 - i)),
+    );
     const shown = stamps.map((stamp, i) => {
       const key = monthKey(stamp);
-      const active = i === span - 1;
+      const active = i === viewSpan - 1;
       return {
         key,
         label: MONTH_ABBR[new Date(stamp).getMonth()],
@@ -244,12 +303,12 @@ export async function loadTrends(
      */
     const averageIsPartial = completed.length === 0;
     const basisIndexes = averageIsPartial
-      ? [span - 1]
+      ? [viewSpan - 1]
       : shown.map((_, i) => i).filter((i) => !shown[i].active && shown[i].present);
     const basis = basisIndexes.map((i) => shown[i]);
     const basisKeys = new Set(basis.map((m) => m.key));
     const monthlyAverageCents = Math.round(
-      basis.reduce((sum, m) => sum + m.totalCents, 0) / basis.length,
+      basis.length ? basis.reduce((sum, m) => sum + m.totalCents, 0) / basis.length : 0,
     );
 
     // Two halves of equal length, so no month is counted on both sides of the
@@ -332,7 +391,7 @@ export async function loadTrends(
     });
 
     return {
-      span,
+      span: viewSpan,
       monthlyAverageCents,
       matchCount: shown.reduce((sum, m) => sum + m.matchCount, 0),
       deltaPercent,
@@ -345,5 +404,7 @@ export async function loadTrends(
     };
   };
 
-  return Object.fromEntries(TREND_SPANS.map((span) => [span, build(span)])) as TrendsBundle;
+  return Object.fromEntries(
+    TREND_SPANS.map((viewSpan) => [viewSpan, build(viewSpan)]),
+  ) as TrendsBundle;
 }

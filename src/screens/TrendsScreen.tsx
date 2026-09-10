@@ -3,7 +3,13 @@ import { LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
 import { dimAlpha, LegendRule, PaceChart, SplitDonut } from '../components/Charts';
 import { BulbIcon, CaretIcon } from '../components/Icons';
 import { Amount, Card, Divider, Eyebrow, HeroCard, StatusDot, T } from '../components/primitives';
-import { TREND_SPANS, type Share, type TrendSpan, type TrendsBundle, type TrendsData } from '../queries/trends';
+import {
+  TREND_SPANS,
+  type Share,
+  type TrendSpan,
+  type TrendsBundle,
+  type TrendsData,
+} from '../queries/trends';
 import type { Period } from '../state/useTransactionFeed';
 import { addMonths, startOfNextMonth } from '../time';
 import { euroLabel, figure } from '../format';
@@ -41,6 +47,7 @@ export function TrendsScreen({
   showHint,
   categoryIds,
   onToggleCategories,
+  onClearCategories,
   onPickMonth,
   onSeeTransactions,
 }: {
@@ -50,6 +57,7 @@ export function TrendsScreen({
   /** What every figure here is narrowed to; empty means every category. */
   categoryIds: string[];
   onToggleCategories: (ids: string[]) => void;
+  onClearCategories: () => void;
   onPickMonth: () => Promise<void>;
   /** Hands this exact scope to the Spend list and goes there. */
   onSeeTransactions: (scope: { period: Period; categoryIds: string[] }) => void;
@@ -102,13 +110,24 @@ export function TrendsScreen({
   const selectionPercent = chosen.reduce((sum, share) => sum + share.percent, 0);
   /* The header has a span switcher beside it, so names only fit one deep. */
   const selectionTag =
-    chosen.length === 0 ? null : chosen.length === 1 ? chosen[0].name : `${chosen.length} categories`;
+    chosen.length === 0
+      ? narrowed
+        ? `${categoryIds.length} selected`
+        : null
+      : chosen.length === 1
+        ? chosen[0].name
+        : `${chosen.length} categories`;
 
   /* The arcs and their legend rows are the same control drawn twice. */
   const chooseCategories = (ids: string[]) => {
     tapSelect();
     settle();
     onToggleCategories(ids);
+  };
+  const clearCategories = () => {
+    tapSelect();
+    settle();
+    onClearCategories();
   };
 
   const matchCount = selected ? selected.matchCount : data.matchCount;
@@ -168,9 +187,23 @@ export function TrendsScreen({
     <View style={styles.screen}>
       <View style={styles.header}>
         <View style={{ gap: 5, flexShrink: 1 }}>
-          <Eyebrow size={10} numberOfLines={1}>
-            {selectionTag ? `${SPAN_LABEL[span]} · ${selectionTag}` : SPAN_LABEL[span]}
-          </Eyebrow>
+          <Pressable
+            accessibilityRole={narrowed ? 'button' : undefined}
+            accessibilityLabel={narrowed ? `Clear category filter. ${selectionTag}` : undefined}
+            disabled={!narrowed}
+            hitSlop={17}
+            onPress={clearCategories}
+            style={styles.filterClear}
+          >
+            <Eyebrow size={10} numberOfLines={1} style={{ flexShrink: 1 }}>
+              {selectionTag ? `${SPAN_LABEL[span]} · ${selectionTag}` : SPAN_LABEL[span]}
+            </Eyebrow>
+            {narrowed ? (
+              <Eyebrow size={8} alpha={0.3}>
+                Clear
+              </Eyebrow>
+            ) : null}
+          </Pressable>
           <T size={19} lineHeight={21} tracking={-0.01}>
             Trends
           </T>
@@ -496,6 +529,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 10,
   },
+  filterClear: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   spans: {
     flexDirection: 'row',
     gap: 3,

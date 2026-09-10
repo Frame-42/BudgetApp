@@ -21,6 +21,19 @@ export const addMonths = (d: Date | number, n: number): number => {
   return new Date(x.getFullYear(), x.getMonth() + n, 1).getTime();
 };
 
+export function stepMonthWithinBounds(
+  start: number,
+  delta: number,
+  earliest: number | null,
+  at: number = Date.now(),
+): number {
+  const latestMonth = startOfMonth(at);
+  const target = addMonths(start, delta);
+  if (target > latestMonth) return latestMonth;
+  if (earliest === null) return delta < 0 ? start : target;
+  return Math.max(target, startOfMonth(earliest));
+}
+
 /**
  * The same day of the month, `n` months on, keeping the time of day — what a
  * split's later parts are dated to.

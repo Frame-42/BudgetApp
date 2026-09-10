@@ -8,7 +8,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { listCategories } from '../repo/categories';
 import { CsvError, parseCsv } from './csv';
-import { categoryForMcc, isSecuritiesPurchase, merchantKey, merchantName } from './rules';
+import { categoryForMcc, isSavebackInvestment, isSecuritiesPurchase, merchantKey, merchantName } from './rules';
 
 /** Columns without which this is not a transaction export at all. */
 const REQUIRED = ['datetime', 'amount', 'name', 'transaction_id'];
@@ -44,6 +44,8 @@ export type ImportPlan = {
   ignoredIncoming: number;
   /** Already in the database under the same bank id. */
   alreadyPresent: number;
+  /** SAVEBACK investment contributions, which are not spending. */
+  ignoredSaveback: number;
 };
 
 /** Rows still needing a person: no category, or a possible duplicate. */
@@ -138,8 +140,14 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
   const seen = new Set<string>();
   let ignoredIncoming = 0;
   let alreadyPresent = 0;
+  let ignoredSaveback = 0;
 
   for (const record of records) {
+    if (isSavebackInvestment(record.type ?? '')) {
+      ignoredSaveback++;
+      continue;
+    }
+
     const amountCents = Math.round(Number.parseFloat(record.amount || '0') * 100);
     // The user's rule, applied before anything else: incoming money is not a
     // transaction this app is for.
@@ -217,7 +225,7 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
     });
   }
 
-  return { rows, ignoredIncoming, alreadyPresent };
+  return { rows, ignoredIncoming, alreadyPresent, ignoredSaveback };
 }
 
 /**

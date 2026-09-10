@@ -127,56 +127,66 @@ export function dimAlpha(alpha: number): number {
   return alpha * 0.065;
 }
 
-export function SplitDonut({
-  shares,
-  children,
-  onPressShare,
-}: {
-  shares: { alpha: number; percent: number; popped?: boolean }[];
-  children: React.ReactNode;
-  /** Makes the arcs themselves the control, by index into `shares`. */
-  onPressShare?: (index: number) => void;
-}) {
-  // One arc is the whole ring, and a ring with a bite out of it reads as a gap
-  // in the data rather than as a join.
+export type DonutShare = {
+  alpha: number;
+  percent: number;
+  totalCents: number;
+  popped?: boolean;
+};
+
+export function donutSegments(shares: DonutShare[]) {
   const whole = shares.length < 2;
+  const totalCents = shares.reduce((sum, share) => sum + share.totalCents, 0) || 1;
+  const spans = shares.map((share) => (share.totalCents / totalCents) * DONUT_CIRC);
+  const requestedStrokes = shares.map(
+    (share) => DONUT_STROKE + (share.popped ? DONUT_EXPAND : 0),
+  );
+  const smallestSpan = Math.min(...spans);
+  const gap = whole ? 0 : Math.min(DONUT_GAP, smallestSpan / 2);
 
-  // Percentages are rounded before they get here, so they rarely add up to
-  // exactly 100 — dividing by their own sum instead of a flat 100 keeps the
-  // arcs tiling the full circle, so the gap where the ring wraps back to the
-  // start isn't left wider or narrower than the rest.
-  const totalPercent = shares.reduce((sum, share) => sum + share.percent, 0) || 1;
-
-  // Each arc starts where the previous one ended, so the walk is kept as a
-  // fraction of the turn and only the drawn dash is trimmed back.
   let consumed = 0;
   const segments = shares.map((share, i) => {
-    const fraction = share.percent / totalPercent;
     const popped = share.popped ?? false;
-    const stroke = DONUT_STROKE + (popped ? DONUT_EXPAND : 0);
-    const span = fraction * DONUT_CIRC;
-    // A round cap hangs half a stroke past each end of the dash, so the gap is
-    // cut out of the dash together with both caps, and what is left is centred
-    // on the share it stands for.
-    const dash = whole ? span : Math.max(span - DONUT_GAP - stroke, 0.6);
+    const span = spans[i];
+    const available = span - gap;
+    const minimumPath = Math.min(0.1, available / 2);
+    const stroke = Math.min(requestedStrokes[i], available - minimumPath);
+    const inset = whole ? 0 : (gap + stroke) / 2;
+    const start = consumed * DONUT_CIRC + inset;
+    const end = consumed * DONUT_CIRC + span - inset;
     const segment = {
       key: i,
       alpha: share.alpha,
       popped,
       stroke,
-      dash,
-      rest: DONUT_CIRC - dash,
-      offset: -(consumed * DONUT_CIRC + (span - dash) / 2),
+      start,
+      end,
+      largeArc: end - start > DONUT_CIRC / 2,
     };
-    consumed += fraction;
+    consumed += span / DONUT_CIRC;
     return segment;
   });
+  return { segments, totalCents, gap };
+}
+
+export function SplitDonut({
+  shares,
+  children,
+  onPressShare,
+}: {
+  shares: DonutShare[];
+  children: React.ReactNode;
+  /** Makes the arcs themselves the control, by index into `shares`. */
+  onPressShare?: (index: number) => void;
+}) {
+  // Display percentages are integers; cents retain the exact proportions the
+  // geometry and hit testing need.
+  const { segments, totalCents } = donutSegments(shares);
+  const whole = shares.length < 2;
 
   /**
-   * Which arc a touch landed on, worked out from the angle rather than left to
-   * the SVG: a dashed stroke is one circle wearing five coats of paint, so its
-   * own hit test cannot tell the arcs apart. The gaps stay live, and fall to
-   * the arc the angle sits in.
+   * Which arc a touch landed on, worked out from its angle. The small visual
+   * gaps stay live and fall to the share whose allocation contains the angle.
    */
   const arcAt = (x: number, y: number): number | null => {
     const dx = x - DONUT_MID;
@@ -188,10 +198,10 @@ export function SplitDonut({
     const turn = ((Math.atan2(dx, -dy) / (2 * Math.PI)) + 1) % 1;
     let walked = 0;
     for (let i = 0; i < shares.length; i++) {
-      walked += shares[i].percent / 100;
+      walked += shares[i].totalCents / totalCents;
       if (turn < walked) return i;
     }
-    // Rounded percentages can leave a sliver past the last arc; it is still its.
+    // Floating-point accumulation can leave a microscopic tail at the wrap.
     return shares.length ? shares.length - 1 : null;
   };
 
@@ -210,20 +220,39 @@ export function SplitDonut({
       <Svg width={DONUT_BOX} height={DONUT_BOX} viewBox={`0 0 ${DONUT_BOX} ${DONUT_BOX}`} fill="none">
         <G rotation={-90} origin={`${DONUT_MID}, ${DONUT_MID}`}>
           {/* Thickened arcs last, so their ends sit over the ones beside them. */}
-          {[...segments].sort((a, b) => Number(a.popped) - Number(b.popped)).map((s) => (
-            <Circle
-              key={s.key}
-              cx={DONUT_MID}
-              cy={DONUT_MID}
-              r={DONUT_RADIUS}
-              fill="none"
-              stroke={`rgba(${ARC_RGB},${s.alpha})`}
-              strokeWidth={s.stroke}
-              strokeLinecap="round"
-              strokeDasharray={`${s.dash} ${s.rest}`}
-              strokeDashoffset={s.offset}
-            />
-          ))}
+          {[...segments].sort((a, b) => Number(a.popped) - Number(b.popped)).map((s) => {
+            if (whole) {
+              return (
+                <Circle
+                  key={s.key}
+                  cx={DONUT_MID}
+                  cy={DONUT_MID}
+                  r={DONUT_RADIUS}
+                  fill="none"
+                  stroke={`rgba(${ARC_RGB},${s.alpha})`}
+                  strokeWidth={s.stroke}
+                  strokeLinecap="round"
+                />
+              );
+            }
+
+            const point = (distance: number) => ({
+              x: DONUT_MID + DONUT_RADIUS * Math.cos(distance / DONUT_RADIUS),
+              y: DONUT_MID + DONUT_RADIUS * Math.sin(distance / DONUT_RADIUS),
+            });
+            const from = point(s.start);
+            const to = point(s.end);
+            return (
+              <Path
+                key={s.key}
+                d={`M ${from.x} ${from.y} A ${DONUT_RADIUS} ${DONUT_RADIUS} 0 ${s.largeArc ? 1 : 0} 1 ${to.x} ${to.y}`}
+                fill="none"
+                stroke={`rgba(${ARC_RGB},${s.alpha})`}
+                strokeWidth={s.stroke}
+                strokeLinecap="round"
+              />
+            );
+          })}
         </G>
       </Svg>
       <View pointerEvents="none" style={styles.donutCenter}>

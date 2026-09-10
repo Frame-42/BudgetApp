@@ -22,8 +22,9 @@ Three facts explain most of what follows:
 2. **There is no account, and no sync.** `src/sync/types.ts` defines the
    interface; `src/sync/local.ts` is a no-op. The outbox fills and is never
    drained.
-3. **There is no test, no lint, and no CI.** `npx tsc --noEmit` is the whole of
-   the verification story.
+3. **Test coverage is focused, and there is no lint or CI.** Jest covers the
+   highest-risk helpers and recent query work, but most persistence paths still
+   rely on `npx tsc --noEmit` and simulator checks.
 
 ---
 
@@ -152,10 +153,10 @@ everything above the interface:
 
 ## P5 — engineering hygiene
 
-- [ ] **Tests.** `src/queries/`, `src/import/`, `src/format.ts` and `src/time.ts`
-      are pure and were written to be testable; `jest-expo` was the stated plan.
-      Start with the CSV reader and the import planner's duplicate rules — the
-      two places where a silent bug costs real data.
+- [ ] **Broaden tests.** `jest-expo` now covers Trends query construction, donut
+      geometry, percentage allocation, month bounds and SAVEBACK planning. CSV
+      parsing and the import planner's duplicate rules remain the next targets —
+      the two places where a silent bug costs real data.
 - [ ] **ESLint + Prettier.** Neither is configured. The codebase is stylistically
       consistent by hand right now; that will not survive a second contributor.
 - [ ] **CI.** A GitHub Action running `tsc --noEmit` plus the tests above.
