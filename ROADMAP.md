@@ -105,10 +105,13 @@ archive — below), not its budgets; those live behind Monthly budget.
       real opening balance — which makes every derived balance a fiction. Needs
       an accounts list, create/edit, and an opening-balance field. (Balances stay
       *derived*; never store one.)
-- [ ] **Recurring.** The table, `listRecurring`/`nextDue`, and Home's "Next out"
-      tile all exist, but only `src/db/demo.ts` ever writes a row. Needs
-      create/edit/delete, and a rule for advancing `next_due_at` once a due date
-      passes (mark-as-paid, or roll forward automatically).
+- [ ] **Recurring.** Create is done — Add's "Advanced" section sets a weekly,
+      monthly or yearly cadence (spreadable over months, like any expense) — and
+      so is stop, from the Spend sheet of any occurrence. Due dates roll forward
+      automatically on launch and foreground (`src/db/recurring.ts`). Still
+      open: editing a schedule's amount or category (today an edit changes one
+      occurrence, so a raise means stop and re-add), and a list of schedules —
+      one whose occurrences were all deleted has no row left to stop it from.
 - [ ] **Income entry.** `AddScreen` records expenses only; the sign can be
       flipped just by editing an existing row in `SpendItemSheet`. Add an
       income/expense switch to Add, or state plainly that income arrives only via

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { DeviceEventEmitter, Animated, Easing, PanResponder, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Easing, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import type { TrendsBundle, TrendSpan } from '../queries/trends';
 import { euroLabel } from '../format';
 import { isHorizontalSwipe } from '../motion';
@@ -178,31 +178,6 @@ export function TrendPeriodPager({ data, selectedKey, onPick, onChangePeriod }: 
     },
   }), [move, offset, release, settle]);
   const pan = useMemo(() => PanResponder.create(panConfig), [panConfig]);
-
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('trends-replay-run', (kind) => {
-      const replay = (dx: number, ms: number, vx: number) => {
-        const began = Date.now();
-        const event = {} as any;
-        panConfig.onPanResponderGrant?.(event, { dx: 0, dy: 0, vx: 0 } as any);
-        const frame = () => {
-          const t = Math.min(1, (Date.now() - began) / ms);
-          const gesture = { dx: dx * t, dy: 0, vx } as any;
-          panConfig.onPanResponderMove?.(event, gesture);
-          if (t < 1) requestAnimationFrame(frame);
-          else panConfig.onPanResponderRelease?.(event, gesture);
-        };
-        requestAnimationFrame(frame);
-      };
-      if (kind === 'slow') replay(135, 420, 0.32);
-      else if (kind === 'fast') replay(-110, 90, -1.5);
-      else {
-        replay(135, 220, 0.65);
-        setTimeout(() => replay(130, 200, 0.7), 320);
-      }
-    });
-    return () => sub.remove();
-  }, [panConfig]);
 
   return (
     <View {...pan.panHandlers} onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={styles.viewport}>

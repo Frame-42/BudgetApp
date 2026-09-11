@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { getDb, getMeta, resetDatabase, setMeta } from '../db/client';
 import { loadDemoData } from '../db/demo';
@@ -7,13 +8,16 @@ import { exportTransactionsCsv } from '../db/export';
 import { exportFilename } from '../export/csv';
 import { shareCsv } from '../export/share';
 import { runOnboarding, type OnboardingInput } from '../db/onboarding';
-import { createTransaction } from '../repo/transactions';
+import { deleteRecurring } from '../repo/recurring';
 import {
   deleteTransactionSplit,
+  insertSplit,
   saveTransactionSplit,
   type SplitEdit,
   type SplitTarget,
 } from '../db/split';
+import { bookDueRecurring, startRecurring } from '../db/recurring';
+import type { Cadence } from '../db/types';
 import { saveMonthBudget, type BudgetInput } from '../db/budget';
 import { sanitizeMerchant } from '../format';
 import { loadHome, type HomeData } from '../queries/home';
@@ -38,10 +42,17 @@ export type Snapshot = {
 
 type BudgetContextValue = {
   data: Snapshot | null;
+  /**
+   * The Add screen's submit. `months` spreads it the way the edit sheet does;
+   * a `cadence` makes it the first occurrence of a schedule that books the rest
+   * as they come due.
+   */
   addExpense: (input: {
     amountCents: number;
     categoryId: string | null;
     merchant: string;
+    months: number;
+    cadence: Cadence | null;
   }) => Promise<void>;
   /**
    * The edit sheet's save. It edits the whole transaction, splits included — a
@@ -50,6 +61,8 @@ type BudgetContextValue = {
   updateExpense: (input: SplitEdit) => Promise<void>;
   /** Takes the group, not the row: a part is never deleted without its siblings. */
   removeExpense: (target: SplitTarget) => Promise<void>;
+  /** Ends a schedule. The occurrences it already booked stay where they are. */
+  stopRecurring: (id: string) => Promise<void>;
   completeOnboarding: (input: OnboardingInput) => Promise<void>;
   notePickedMonth: () => Promise<void>;
   reset: () => Promise<void>;
@@ -108,7 +121,16 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    load();
+    /* Booked before the first load, so Home opens on a month that already holds
+       the rent that went out while the app was closed. A failure here costs a
+       late booking, never the app — the next foreground tries again. */
+    const book = () => getDb().then(bookDueRecurring).catch(() => 0);
+    book().then(load);
+    // No `load()` after the foreground pass: bookings are ordinary transaction
+    // writes, which the change listener below already reports.
+    const foreground = AppState.addEventListener('change', (state) => {
+      if (state === 'active') book();
+    });
     // One write fires several change events (the row, then its outbox entry),
     // so coalesce them into a single reload.
     const subscription = SQLite.addDatabaseChangeListener(() => {
@@ -118,22 +140,29 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (pending.current) clearTimeout(pending.current);
       subscription.remove();
+      foreground.remove();
     };
   }, [load]);
 
   const addExpense = useCallback<BudgetContextValue['addExpense']>(
-    async ({ amountCents, categoryId, merchant }) => {
+    async ({ amountCents, categoryId, merchant, months, cadence }) => {
       if (amountCents <= 0) return;
       const db = await getDb();
       const accountId = (await loadAddOptions(db)).defaultAccountId;
       if (!accountId) return;
-      await createTransaction(db, {
+      const entry = {
         account_id: accountId,
         category_id: categoryId,
         merchant: sanitizeMerchant(merchant),
         amount_cents: -amountCents,
         occurred_at: Date.now(),
-      });
+        months,
+      };
+      if (cadence) {
+        await startRecurring(db, { ...entry, cadence });
+      } else {
+        await db.withTransactionAsync(() => insertSplit(db, entry));
+      }
     },
     [],
   );
@@ -153,6 +182,11 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const removeExpense = useCallback<BudgetContextValue['removeExpense']>(async (target) => {
     const db = await getDb();
     await deleteTransactionSplit(db, target);
+  }, []);
+
+  const stopRecurring = useCallback<BudgetContextValue['stopRecurring']>(async (id) => {
+    const db = await getDb();
+    await deleteRecurring(db, id);
   }, []);
 
   const completeOnboarding = useCallback<BudgetContextValue['completeOnboarding']>(
@@ -239,6 +273,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         addExpense,
         updateExpense,
         removeExpense,
+        stopRecurring,
         completeOnboarding,
         notePickedMonth,
         reset,

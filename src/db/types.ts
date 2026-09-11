@@ -39,6 +39,8 @@ export type TransactionRow = SyncRow & {
   split_id: string | null;
   /** 0-based position within that split, oldest first; NULL outside one. */
   split_index: number | null;
+  /** The schedule this row is an occurrence of; NULL when it was entered once. */
+  recurring_id: string | null;
 };
 
 export type BudgetRow = SyncRow & {
@@ -47,12 +49,20 @@ export type BudgetRow = SyncRow & {
   limit_cents: number;
 };
 
+export type Cadence = 'week' | 'month' | 'year';
+
 export type RecurringRow = SyncRow & {
   label: string;
+  /** Signed, like a transaction; the whole occurrence, before any spreading. */
   amount_cents: number;
   next_due_at: number;
   account_id: string | null;
   category_id: string | null;
+  cadence: Cadence;
+  /** The first occurrence, which every later one is measured from. NULL before V4. */
+  anchor_at: number | null;
+  /** How many months each occurrence is spread over; 1 is not a split. */
+  split_months: number;
 };
 
 export type SettingRow = SyncRow & { key: string; value: string };

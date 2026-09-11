@@ -239,6 +239,7 @@ export function SpendScreen({
   contentInset,
   onSave,
   onDelete,
+  onStopRecurring,
 }: {
   feed: TransactionFeed;
   /** Live categories, for the edit sheet's chips. */
@@ -246,6 +247,7 @@ export function SpendScreen({
   contentInset: { top: number; bottom: number };
   onSave: (input: SplitEdit) => void;
   onDelete: (target: SplitTarget) => void;
+  onStopRecurring: (id: string) => void;
 }) {
   /* Which row is being acted on: transient overlay state, so it stays local. */
   const [selected, setSelected] = useState<TransactionItem | null>(null);
@@ -456,6 +458,7 @@ export function SpendScreen({
         onClose={() => setSelected(null)}
         onSave={onSave}
         onDelete={onDelete}
+        onStopRecurring={onStopRecurring}
       />
     </View>
   );
