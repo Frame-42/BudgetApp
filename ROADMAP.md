@@ -118,6 +118,19 @@ archive — below), not its budgets; those live behind Monthly budget.
       import.
 - [ ] **Import beyond CSV.** OFX/QIF, and a column-mapping step for exports whose
       headers aren't recognised — today an unfamiliar bank export simply fails.
+- [ ] **Share-sheet import** — pressing Share on an export inside a banking app
+      and having BudgetApp appear as a target, instead of saving the file first
+      and opening it here through `DocumentPicker`. `src/import/plan.ts` and
+      `ImportSheet.tsx` already separate "get the text" from "plan it", so the
+      hand-off is only a second way to reach `onPlan(text)`, opened straight to
+      `'preview'`. The real cost is native: an iOS Share Extension (its own app
+      target, an App Group to hand data to the main app, a paid developer
+      account for a real device) plus Android intent filters — most practically
+      `expo-share-intent`'s config plugin for both. That is a permanent exit
+      from Expo Go for this feature: Expo Go is a fixed binary Expo ships and
+      can never contain a third-party native module, no config changes that: it
+      would need `npm run ios` / `expo run:android`'s dev-client build to be how
+      the app is opened, by anyone testing it, from then on. Left alone for now.
 - [ ] **Search and filter reach.** Spend filters by category and text; date-range
       and amount-range filters are the obvious next two.
 
