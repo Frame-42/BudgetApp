@@ -59,6 +59,7 @@ function Phone() {
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [merchant, setMerchant] = useState('');
+  const [day, setDay] = useState<number | null>(null);
   const [months, setMonths] = useState(1);
   const [cadence, setCadence] = useState<Cadence | null>(null);
 
@@ -90,11 +91,13 @@ function Phone() {
       amountCents: parseAmountToCents(amount),
       categoryId,
       merchant,
+      day,
       months,
       cadence,
     });
     setAmount('');
     setMerchant('');
+    setDay(null);
     setMonths(1);
     setCadence(null);
     setTab(1);
@@ -132,6 +135,8 @@ function Phone() {
       categories={data.add.categories}
       categoryId={categoryId}
       onCategoryChange={setCategoryId}
+      day={day}
+      onDayChange={setDay}
       months={months}
       onMonthsChange={setMonths}
       cadence={cadence}

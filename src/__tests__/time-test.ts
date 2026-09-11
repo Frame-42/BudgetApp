@@ -1,4 +1,11 @@
-import { dueOccurrences, occurrenceAt, occurrenceIndex, stepMonthWithinBounds } from '../time';
+import {
+  calendarCells,
+  dueOccurrences,
+  occurrenceAt,
+  occurrenceIndex,
+  onDay,
+  stepMonthWithinBounds,
+} from '../time';
 
 describe('stepMonthWithinBounds', () => {
   const june = new Date(2026, 5, 1).getTime();
@@ -82,5 +89,35 @@ describe('dueOccurrences', () => {
     const { due, next } = dueOccurrences(anchor, 'week', anchor, at, 3);
     expect(due).toHaveLength(3);
     expect(next).toBe(occurrenceAt(anchor, 'week', 3));
+  });
+});
+
+describe('calendarCells', () => {
+  it('leads with blanks up to the first weekday, Monday-first', () => {
+    // 1 Sep 2026 is a Tuesday: one blank for Monday.
+    const cells = calendarCells(new Date(2026, 8, 17));
+    expect(cells[0]).toBeNull();
+    expect(cells[1]).toBe(new Date(2026, 8, 1).getTime());
+    expect(cells).toHaveLength(1 + 30);
+  });
+
+  it('puts a Sunday the 1st in the last column', () => {
+    // 1 Feb 2026 is a Sunday.
+    const cells = calendarCells(new Date(2026, 1, 1));
+    expect(cells.slice(0, 6)).toEqual([null, null, null, null, null, null]);
+    expect(cells[6]).toBe(new Date(2026, 1, 1).getTime());
+  });
+
+  it('ends on the last day of the month', () => {
+    const cells = calendarCells(new Date(2028, 1, 1));
+    expect(cells[cells.length - 1]).toBe(new Date(2028, 1, 29).getTime());
+  });
+});
+
+describe('onDay', () => {
+  it('keeps the day and takes the time of day from the reference', () => {
+    const day = new Date(2026, 7, 3).getTime();
+    const at = new Date(2026, 8, 11, 14, 23, 7, 120).getTime();
+    expect(onDay(day, at)).toBe(new Date(2026, 7, 3, 14, 23, 7, 120).getTime());
   });
 });

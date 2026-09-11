@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { cardStyle, Eyebrow, FieldSurface, HeroCard, T, TextField } from '../components/primitives';
 import { CategoryChips } from '../components/CategoryChips';
+import { DateCard } from '../components/DateCard';
 import { Keypad } from '../components/Keypad';
 import { CADENCE_WORD, RepeatCard } from '../components/RepeatCard';
 import { SplitCard } from '../components/SplitCard';
@@ -10,16 +11,18 @@ import { morph } from '../motion';
 import { splitAmounts } from '../db/split';
 import type { Cadence } from '../db/types';
 import { figure, MAX_MERCHANT_LENGTH, parseAmountToCents } from '../format';
+import { occurrenceIndex, onDay } from '../time';
 import { color, fg, radius, w } from '../theme';
 
 /**
  * 03 — Add: expense entry.
  *
- * Spreading over months and repeating sit behind "Advanced": most entries are a
- * coffee, and two more cards between the name and the keypad would push the
- * button off the screen for every one of them. Closing the section puts both
- * back to their defaults rather than hiding them — an option still applying
- * while nobody can see it would be written into the next expense unasked.
+ * The date, spreading over months and repeating sit behind "Advanced": most
+ * entries are a coffee bought just now, and three more cards between the name
+ * and the keypad would push the button off the screen for every one of them.
+ * Closing the section puts all three back to their defaults rather than hiding
+ * them — an option still applying while nobody can see it would be written into
+ * the next expense unasked.
  */
 export function AddScreen({
   amount,
@@ -29,6 +32,8 @@ export function AddScreen({
   categories,
   categoryId,
   onCategoryChange,
+  day,
+  onDayChange,
   months,
   onMonthsChange,
   cadence,
@@ -44,6 +49,9 @@ export function AddScreen({
   categories: { id: string; name: string }[];
   categoryId: string | null;
   onCategoryChange: (next: string) => void;
+  /** The start of the day it happened; null for today. */
+  day: number | null;
+  onDayChange: (next: number | null) => void;
   /** How far the amount is spread; 1 is not a split. */
   months: number;
   onMonthsChange: (next: number) => void;
@@ -56,19 +64,25 @@ export function AddScreen({
 }) {
   /* The screen unmounts on every tab switch while the options live in App, so
      coming back to options already set has to reopen the section they're in. */
-  const [advanced, setAdvanced] = useState(() => months > 1 || cadence !== null);
+  const [advanced, setAdvanced] = useState(
+    () => day !== null || months > 1 || cadence !== null,
+  );
 
   const display = amount === '' ? '0' : amount;
   const amountCents = parseAmountToCents(amount);
-  /* A split leaves this month only its first part — the figure to count against
-     what is left, not the whole. */
-  const remainingCents = leftToSpendCents - splitAmounts(amountCents, months)[0];
   const now = Date.now();
+  const at = day === null ? now : onDay(day, now);
+  /* Only the part that lands in this month counts against what is left: the
+     first of a split, a later one when it was back-dated into an earlier month,
+     none when every part has already been and gone. */
+  const part = occurrenceIndex(at, 'month', now);
+  const remainingCents = leftToSpendCents - (splitAmounts(amountCents, months)[part] ?? 0);
 
   const toggleAdvanced = () => {
     tapSelect();
     morph();
     if (advanced) {
+      onDayChange(null);
       onMonthsChange(1);
       onCadenceChange(null);
     }
@@ -84,7 +98,7 @@ export function AddScreen({
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: advanced }}
-          accessibilityHint={advanced ? 'Closing resets split and repeat' : undefined}
+          accessibilityHint={advanced ? 'Closing resets date, split and repeat' : undefined}
           onPress={toggleAdvanced}
           hitSlop={8}
           style={({ pressed }) => [
@@ -143,13 +157,14 @@ export function AddScreen({
 
       {advanced ? (
         <>
+          <DateCard value={day} onChange={onDayChange} />
           <SplitCard
             months={months}
             onChange={onMonthsChange}
             totalCents={amountCents}
-            startAt={now}
+            startAt={at}
           />
-          <RepeatCard value={cadence} onChange={onCadenceChange} startAt={now} />
+          <RepeatCard value={cadence} onChange={onCadenceChange} startAt={at} />
         </>
       ) : null}
 

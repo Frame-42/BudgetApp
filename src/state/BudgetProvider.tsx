@@ -20,6 +20,7 @@ import { bookDueRecurring, startRecurring } from '../db/recurring';
 import type { Cadence } from '../db/types';
 import { saveMonthBudget, type BudgetInput } from '../db/budget';
 import { sanitizeMerchant } from '../format';
+import { onDay } from '../time';
 import { loadHome, type HomeData } from '../queries/home';
 import { loadYou, type YouData } from '../queries/you';
 import { loadAddOptions, type AddOptions } from '../queries/add';
@@ -51,6 +52,8 @@ type BudgetContextValue = {
     amountCents: number;
     categoryId: string | null;
     merchant: string;
+    /** The start of the day it happened; null for now. */
+    day: number | null;
     months: number;
     cadence: Cadence | null;
   }) => Promise<void>;
@@ -145,7 +148,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, [load]);
 
   const addExpense = useCallback<BudgetContextValue['addExpense']>(
-    async ({ amountCents, categoryId, merchant, months, cadence }) => {
+    async ({ amountCents, categoryId, merchant, day, months, cadence }) => {
       if (amountCents <= 0) return;
       const db = await getDb();
       const accountId = (await loadAddOptions(db)).defaultAccountId;
@@ -155,11 +158,14 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         category_id: categoryId,
         merchant: sanitizeMerchant(merchant),
         amount_cents: -amountCents,
-        occurred_at: Date.now(),
+        occurred_at: day === null ? Date.now() : onDay(day),
         months,
       };
       if (cadence) {
         await startRecurring(db, { ...entry, cadence });
+        /* Back-dated far enough, its second occurrence is already behind us —
+           book it now rather than at the next return to the foreground. */
+        if (day !== null) await bookDueRecurring(db);
       } else {
         await db.withTransactionAsync(() => insertSplit(db, entry));
       }

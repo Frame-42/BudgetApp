@@ -21,15 +21,50 @@ export function MonthPickerSheet({
   onPick: (monthStart: number) => void;
   onClose: () => void;
 }) {
+  const years = monthsWithData.map((key) => Number(key.slice(0, 4)));
+  return (
+    <Sheet visible onClose={onClose}>
+      <MonthGrid
+        monthStart={monthStart}
+        firstYear={years.length ? Math.min(...years) : new Date().getFullYear()}
+        isEmpty={(start) => !monthsWithData.includes(monthKey(start))}
+        onPick={(start) => {
+          onPick(start);
+          onClose();
+        }}
+      />
+
+      <Pressable accessibilityRole="button" onPress={onClose} style={styles.cancel}>
+        <T size={13} alpha={0.4}>
+          Cancel
+        </T>
+      </Pressable>
+    </Sheet>
+  );
+}
+
+/**
+ * The sheet's contents without the sheet: a year stepper over twelve months,
+ * nothing after the current month pickable. The day picker shows it in place of
+ * its days, since a second sheet can't open over the first.
+ */
+export function MonthGrid({
+  monthStart,
+  firstYear,
+  isEmpty,
+  onPick,
+}: {
+  monthStart: number | null;
+  /** How far back the year stepper goes; null for no limit. */
+  firstYear: number | null;
+  /** A past month that still can't be picked — Spend's months with nothing in them. */
+  isEmpty?: (monthStart: number) => boolean;
+  onPick: (monthStart: number) => void;
+}) {
   const now = new Date();
   const latestMonth = startOfMonth(now);
   const [year, setYear] = useState(() => new Date(monthStart ?? Date.now()).getFullYear());
-
-  const years = monthsWithData.map((key) => Number(key.slice(0, 4)));
-  const firstYear = years.length ? Math.min(...years) : now.getFullYear();
   const lastYear = now.getFullYear();
-
-  const has = (month: number) => monthsWithData.includes(monthKey(new Date(year, month, 1)));
   const selectedKey = monthStart === null ? null : monthKey(monthStart);
 
   const stepYear = (delta: number) => {
@@ -38,13 +73,13 @@ export function MonthPickerSheet({
   };
 
   return (
-    <Sheet visible onClose={onClose}>
+    <>
       <View style={styles.head}>
         <Eyebrow alpha={0.3}>Pick a month</Eyebrow>
         <View style={styles.years}>
           <YearStep
             direction="back"
-            enabled={year > firstYear}
+            enabled={firstYear === null || year > firstYear}
             onPress={() => stepYear(-1)}
           />
           <T weight="monoMedium" size={12} tracking={0.04} style={{ color: color.textStrong }}>
@@ -62,7 +97,8 @@ export function MonthPickerSheet({
         {MONTH_ABBR.map((label, month) => {
           const start = startOfMonth(new Date(year, month, 1));
           const future = start > latestMonth;
-          const enabled = !future && has(month);
+          const empty = isEmpty?.(start) ?? false;
+          const enabled = !future && !empty;
           const on = selectedKey === monthKey(start);
           return (
             <Pressable
@@ -76,7 +112,6 @@ export function MonthPickerSheet({
               onPress={() => {
                 tapSelect();
                 onPick(start);
-                onClose();
               }}
               style={[styles.cell, on ? styles.cellOn : enabled ? styles.cellOff : styles.cellDead]}
             >
@@ -92,13 +127,7 @@ export function MonthPickerSheet({
           );
         })}
       </View>
-
-      <Pressable accessibilityRole="button" onPress={onClose} style={styles.cancel}>
-        <T size={13} alpha={0.4}>
-          Cancel
-        </T>
-      </Pressable>
-    </Sheet>
+    </>
   );
 }
 

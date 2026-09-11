@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isHorizontalSwipe } from '../motion';
 import { GUTTER, color, radius, w } from '../theme';
 
 /** How far a finger travels before a touch is treated as a drag rather than a press. */
@@ -36,9 +37,14 @@ export function Sheet({
   const translateY = useRef(new Animated.Value(0)).current;
   const height = useRef(600);
 
+  const startX = useRef(0);
   const startY = useRef(0);
   const startT = useRef(0);
   const lastY = useRef(0);
+  /* Set once a touch has gone sideways first — a swipe through months on the
+     day picker — so drifting downward partway through doesn't turn it into a
+     dismiss. Cleared by the next touch. */
+  const sideways = useRef(false);
   /*
    * While a drag is live the content stops taking touches, which cancels the
    * press on whichever button the drag began on — otherwise releasing after a
@@ -91,6 +97,8 @@ export function Sheet({
 
           <Animated.View
             onTouchStart={(e) => {
+              sideways.current = false;
+              startX.current = e.nativeEvent.pageX;
               startY.current = e.nativeEvent.pageY;
               lastY.current = e.nativeEvent.pageY;
               startT.current = Date.now();
@@ -100,11 +108,20 @@ export function Sheet({
                  seed the origin from the first move rather than measuring from
                  whatever the last gesture left behind. */
               if (startT.current === 0) {
+                startX.current = e.nativeEvent.pageX;
                 startY.current = e.nativeEvent.pageY;
                 startT.current = Date.now();
               }
               lastY.current = e.nativeEvent.pageY;
               const dy = lastY.current - startY.current;
+              if (
+                !isDragging.current &&
+                !sideways.current &&
+                isHorizontalSwipe(e.nativeEvent.pageX - startX.current, dy)
+              ) {
+                sideways.current = true;
+              }
+              if (sideways.current) return;
               if (!isDragging.current && dy > DRAG_SLOP) {
                 isDragging.current = true;
                 setDragging(true);

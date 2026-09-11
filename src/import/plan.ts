@@ -13,6 +13,20 @@ import { categoryForMcc, isSavebackInvestment, isSecuritiesPurchase, merchantKey
 /** Columns without which this is not a transaction export at all. */
 const REQUIRED = ['datetime', 'amount', 'name', 'transaction_id'];
 
+/**
+ * Whether text (e.g. clipboard contents) is worth offering as an import —
+ * same header check `buildPlan` itself enforces, so this can't say yes to
+ * something the actual parse would then reject.
+ */
+export function looksLikeImportableCsv(text: string): boolean {
+  if (!text.trim()) return false;
+  try {
+    return parseCsv(text, REQUIRED).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** How far apart two rows can sit and still be the same purchase typed twice. */
 const FUZZY_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 

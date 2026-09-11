@@ -119,6 +119,34 @@ export function dueOccurrences(
   return { due, next };
 }
 
+/**
+ * `day` with the time of day taken from `at` — what a back-dated expense is
+ * stamped with. Midnight would sort it beneath everything else that day, and
+ * the time it was entered is the closest thing to when it happened that the
+ * app knows.
+ */
+export function onDay(day: number, at: number = Date.now()): number {
+  const x = new Date(day);
+  const t = new Date(at);
+  x.setHours(t.getHours(), t.getMinutes(), t.getSeconds(), t.getMilliseconds());
+  return x.getTime();
+}
+
+/**
+ * A month laid out Monday-first, as the date picker draws it: the start of each
+ * day, led by `null`s for the weekdays before the 1st. Rows are not padded at
+ * the end, so the grid ends on the last day rather than on a row of blanks.
+ */
+export function calendarCells(month: Date | number): (number | null)[] {
+  const first = new Date(startOfMonth(month));
+  const lead = (first.getDay() + 6) % 7; // Monday = 0
+  const cells: (number | null)[] = Array.from({ length: lead }, () => null);
+  for (let day = 1; day <= daysInMonth(first); day++) {
+    cells.push(new Date(first.getFullYear(), first.getMonth(), day).getTime());
+  }
+  return cells;
+}
+
 export const daysInMonth = (d: Date | number): number => {
   const x = new Date(d);
   return new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate();

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { Eyebrow, T } from './primitives';
@@ -11,6 +12,7 @@ import { amountLabel } from '../format';
 import { shortDate } from '../time';
 import {
   keepSinceLastImport,
+  looksLikeImportableCsv,
   needsReview,
   offersImportCutoff,
   readyCount,
@@ -57,6 +59,7 @@ export function ImportSheet({
   const [queue, setQueue] = useState<ImportRow[][]>([]);
   const [at, setAt] = useState(0);
   const [imported, setImported] = useState(0);
+  const [clipboardHasCsv, setClipboardHasCsv] = useState(false);
 
   /* Every open starts over. A half-reviewed plan from last time would be worse
      than no plan: its counts describe a file that is no longer on screen. */
@@ -69,9 +72,40 @@ export function ImportSheet({
     setQueue([]);
     setAt(0);
     setImported(0);
+    setClipboardHasCsv(false);
+    // Checked once per open rather than polled: reading the clipboard on iOS
+    // surfaces a system "pasted from" notice, so it should only happen right
+    // when the user would see the option it unlocks.
+    let cancelled = false;
+    Clipboard.getStringAsync()
+      .then((text) => {
+        if (!cancelled) setClipboardHasCsv(looksLikeImportableCsv(text));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [visible]);
 
   if (!visible) return null;
+
+  const planFromText = async (text: string, fallback: string) => {
+    setBusy(true);
+    try {
+      const next = await onPlan(text);
+      morph();
+      setPlan(next);
+      // Only worth asking when the file actually spans the last import — both
+      // some overlap to skip and something new past it. Otherwise the two
+      // choices below would import exactly the same rows.
+      setMode(offersImportCutoff(next) ? 'cutoff' : 'preview');
+    } catch (problem) {
+      tapWarn();
+      setError(problem instanceof Error ? problem.message : fallback);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const pick = async () => {
     tapSelect();
@@ -84,22 +118,15 @@ export function ImportSheet({
     });
     if (picked.canceled || !picked.assets[0]) return;
 
-    setBusy(true);
-    try {
-      const text = await new File(picked.assets[0].uri).text();
-      const next = await onPlan(text);
-      morph();
-      setPlan(next);
-      // Only worth asking when the file actually spans the last import — both
-      // some overlap to skip and something new past it. Otherwise the two
-      // choices below would import exactly the same rows.
-      setMode(offersImportCutoff(next) ? 'cutoff' : 'preview');
-    } catch (problem) {
-      tapWarn();
-      setError(problem instanceof Error ? problem.message : 'That file could not be read.');
-    } finally {
-      setBusy(false);
-    }
+    const text = await new File(picked.assets[0].uri).text();
+    await planFromText(text, 'That file could not be read.');
+  };
+
+  const pasteFromClipboard = async () => {
+    tapSelect();
+    setError(null);
+    const text = await Clipboard.getStringAsync();
+    await planFromText(text, 'That could not be read.');
   };
 
   /* Both leave `mode` at 'preview' either way — the choice only decides which
@@ -202,6 +229,19 @@ export function ImportSheet({
               </T>
             )}
           </Pressable>
+          {clipboardHasCsv ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: busy }}
+              disabled={busy}
+              onPress={pasteFromClipboard}
+              style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+            >
+              <T size={14} style={{ color: color.textStrong }}>
+                Paste from clipboard
+              </T>
+            </Pressable>
+          ) : null}
           <Pressable accessibilityRole="button" onPress={onClose} style={styles.quiet} hitSlop={8}>
             <T size={12.5} alpha={0.4}>
               Cancel

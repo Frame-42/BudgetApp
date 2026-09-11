@@ -8,6 +8,7 @@
     "expo": "~57.0.17",
     "expo-blur": "~57.0.2",
     "expo-build-properties": "~57.0.17",
+    "expo-clipboard": "~57.0.2",
     "expo-crypto": "~57.0.2",
     "expo-document-picker": "~57.0.1",
     "expo-file-system": "~57.0.6",
@@ -39,7 +40,9 @@
   },
   "jest": {
     "preset": "jest-expo",
-    "modulePathIgnorePatterns": ["<rootDir>/.claude/"]
+    "modulePathIgnorePatterns": [
+      "<rootDir>/.claude/"
+    ]
   },
   "private": true
 }

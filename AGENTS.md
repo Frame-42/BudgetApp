@@ -49,7 +49,7 @@ them — change `app.json` and let the next prebuild regenerate.
 | Path | Holds |
 |---|---|
 | `src/theme.ts` | Design tokens — surfaces, the two accent tints, radii, fonts |
-| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor), `SegmentedPill.tsx` (the two-state slide switch), `SplitCard.tsx` + `RepeatCard.tsx` (Add's advanced options; the split card is also the edit sheet's) |
+| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor), `SegmentedPill.tsx` (the two-state slide switch), `DateCard.tsx` + `SplitCard.tsx` + `RepeatCard.tsx` (Add's advanced options, in that order; the split card is also the edit sheet's), `DayPickerSheet.tsx` (the date card's calendar), `MonthStepper.tsx` (the carets + swipeable month label + tap-for-choices pill, shared by Spend and the day picker), `MonthPickerSheet.tsx` (its `MonthGrid` also shows inside the day picker) |
 | `src/screens/` | One per tab, plus `OnboardingScreen` and `BudgetScreen` (a full-screen Modal editor); presentational, fed by props |
 | `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
 | `src/repo/` | Typed CRUD per table — the only place writes happen |
@@ -195,7 +195,7 @@ not. Fixing that means a new column, which `export/csv.ts` says is exactly what
 turns the export from a backup into a report; leave it.
 
 **A recurring expense is a schedule that books its own occurrences.** Add's
-"Advanced" pill reveals the split stepper and a Repeats card; picking a cadence
+"Advanced" pill reveals a Date card, the split stepper and a Repeats card; picking a cadence
 makes the expense occurrence 0 of a `recurring` row (migration v4 added
 `cadence`, `anchor_at`, `split_months`, and `transactions.recurring_id`). Six
 rules:
@@ -218,9 +218,15 @@ rules:
 - **Edit and Delete act on one occurrence; "Stop repeating" ends the schedule.**
   Stopping soft-deletes the `recurring` row and leaves every booked occurrence —
   that money moved. A stopped schedule reads as `recurring: null` on the item.
-- **Closing "Advanced" resets both options.** An option still applying while
-  hidden would be written into the next expense unasked. The section reopens by
-  itself when the screen remounts onto options already set.
+- **Closing "Advanced" resets every option**, the date included. An option
+  still applying while hidden would be written into the next expense unasked.
+  The section reopens by itself when the screen remounts onto options already set.
+- **The date is a day, not a moment, and `null` is today.** A back-dated entry
+  is stamped with the picked day at the current time of day (`onDay`), so it
+  sorts sensibly within that day; nothing after today is pickable. The split and
+  the repeat are measured from it, and a back-dated schedule books its missed
+  occurrences straight after `startRecurring` rather than waiting for the next
+  foreground.
 
 **Money is integer cents, everywhere.** Never floats, never a formatted string in
 the database. Format only via `src/format.ts`. The euro symbol *trails* the
@@ -427,6 +433,61 @@ Two things about the panel that cost time on 2026-09-02:
   while a `simctl` screenshot is 3× that (1206×2622). Divide screenshot pixels by
   3 before tapping, or every tap lands somewhere else. A tap on the wrong spot
   inside the scrolling column reads as a drag and scrolls the page instead.
+
+**The panel is not a separate, hidden simulator — it drives the same
+Simulator.app window the user already has open.** `attach`/`tap`/`swipe` send
+real input to the one booted CoreSimulator device; there is only ever one
+device, and Apple's own `Simulator.app` is just a viewer bound to it like the
+tool is. That is why every tap during this session landed live in the user's
+own visible Simulator.app window — not a second one, not a screenshot loop.
+Worth being explicit about, because the failure below is very easy to
+misdiagnose as "the shared device is somehow broken" when it isn't: confirmed
+by `ps` mid-outage, `Simulator.app` (pid 72266, launched 2026-09-09 17:17, the
+same UDID throughout) never stopped running, and the device stayed `Booted`
+the whole time. Only the tool's own helper died.
+
+**The whole panel can go down, not just `screenshot` — and that time the tool
+won't self-heal.** Chased on 2026-09-11: after a session's worth of `attach` /
+`tap` / `swipe` all working fine, every one of them started failing with
+_"Claude Code iOS Simulator has stopped retrying after repeated crashes.
+Retrying will not help; ask the user to re-open the simulator panel."_ — from a
+cold `attach`, and confirmed still true of a bare `tap` too, not just
+`attach`/`screenshot`. This is one level below the `SimDeviceLegacyHIDClient`
+story above: not a stale handle inside the tool, but its actual helper
+*process* — `claude-ios-sim`
+(`/Applications/Claude.app/Contents/Helpers/Claude iOS Sim.app`, part of Claude
+Desktop, unrelated to Xcode or this project) — dying outright, most likely while
+capturing/compositing frames from that same Simulator.app window for the tool's
+own preview and `screenshot` action.
+
+Confirmed from the crash reports themselves, at
+`~/Library/Logs/DiagnosticReports/claude-ios-sim-*.ips`: thirteen crashes in
+under 4 minutes, same `slice_uuid` (`cf3c20f6-256e-338e-8215-a444e0d730dc`)
+every time, `EXC_CRASH`/`SIGABRT`, an uncaught Objective-C exception thrown from
+deep inside Apple's own CoreImage/Metal stack —
+`+[CIKernelLibrary(Internal) internalBinaryArchiveWithName:device:]` →
+`-[_MTLBinaryArchive loadFromURL:error:]` → `-[_MTLDevice
+recordBinaryArchiveUsage:]`. Thirteen is where it gave up and started
+answering every action with the message above instead of trying again. Nothing
+in this project's code path is on that stack, and it happened between tool
+calls with no `tap`/`attach` in flight, so it wasn't provoked by anything an
+agent did — it's a fault in Apple's shader-archive loading on this machine's OS
+(`macOS 27.0 (26A5425a)` — an early/beta build; that class of Metal cache bug is
+more common there). `ps aux | grep claude-ios-sim` confirmed the process was
+gone, not hung.
+
+There is no recovery from inside a session: the tool's own message is the fix —
+tell the user to reopen the simulator panel, which relaunches the helper — and
+don't burn a retry loop on `attach` once you've seen this message once, since it
+means the retry budget is already spent. Don't try relaunching
+`claude-ios-sim` from a shell either — tried it: it takes its commands over its
+own stdin from whatever spawned it, so run standalone it just logs
+`stdin EOF, exiting` and dies with nothing to connect to. Only Claude Desktop
+itself, reopening the panel, spawns it wired up to anything. Meanwhile `xcrun simctl` commands keep
+working exactly as always (`screenshot`, `launch`, `openurl`, and reading
+`budget.db` with `sqlite3`) — they talk to the simulator directly, never through
+this helper — so a write can still be verified even with the panel dead; only
+live tapping and the panel's own `screenshot` are blocked until it's reopened.
 
 **`/reload` is unreliable, and Fast Refresh is not a substitute.** A source edit
 triggers Fast Refresh, which *preserves module state* — including the memoized
