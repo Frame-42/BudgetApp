@@ -49,7 +49,7 @@ them — change `app.json` and let the next prebuild regenerate.
 | Path | Holds |
 |---|---|
 | `src/theme.ts` | Design tokens — surfaces, the two accent tints, radii, fonts |
-| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor), `SegmentedPill.tsx` (the two-state slide switch), `DateCard.tsx` + `SplitCard.tsx` + `RepeatCard.tsx` (Add's advanced options, in that order; the split card is also the edit sheet's), `DayPickerSheet.tsx` (the date card's calendar), `MonthStepper.tsx` (the carets + swipeable month label + tap-for-choices pill, shared by Spend and the day picker), `MonthPickerSheet.tsx` (its `MonthGrid` also shows inside the day picker) |
+| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor), `SegmentedPill.tsx` (the two-state slide switch), `DateCard.tsx` + `SplitCard.tsx` + `RepeatCard.tsx` (Add's advanced options, in that order), `DayPickerSheet.tsx` (the date card's calendar), `MonthStepper.tsx` (the carets + swipeable month label + tap-for-choices pill, shared by Spend and the day picker), `MonthPickerSheet.tsx` (its `MonthGrid` also shows inside the day picker) |
 | `src/screens/` | One per tab, plus `OnboardingScreen` and `BudgetScreen` (a full-screen Modal editor); presentational, fed by props |
 | `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
 | `src/repo/` | Typed CRUD per table — the only place writes happen |
@@ -157,14 +157,15 @@ would mean teaching Home, Trends, Spend, the donut, the weekly bars and the CSV
 export what a split is; materialising it means none of them ever find out — a
 part is simply spending in its own month. Six rules hold it together:
 
-- **The sheet edits the whole transaction, not the part that was held.** The
-  amount it seeds is `split.totalCents`, and the month count is the reach. The
-  head still shows the part, because that is the row the user tapped.
+- **An edit takes the whole transaction, not the part that was held.** The
+  amount it seeds is `split.totalCents`, the month count is the reach, and the
+  date is `split.startAt`. The Spend sheet's head still shows the part, because
+  that is the row the user tapped.
 - **A delete takes the group.** Leaving eleven twelfths of a purchase behind
   because the sheet was opened on December is a trap, not a feature.
 - **The parts always sum back to the figure that was typed.** `splitAmounts`
   hands the remainder to the earliest parts (1000 over 3 is 3.34 + 3.33 + 3.33),
-  so no cent is ever lost to rounding. The preview in the sheet calls the same
+  so no cent is ever lost to rounding. The preview in the split card calls the same
   function, so the figure shown is the figure written.
 - **Later parts keep the day of the month, clamped.** `addMonthsKeepingDay`, not
   `addMonths` — which lands on the 1st, right for a budget month and wrong here.
@@ -220,13 +221,32 @@ rules:
   that money moved. A stopped schedule reads as `recurring: null` on the item.
 - **Closing "Advanced" resets every option**, the date included. An option
   still applying while hidden would be written into the next expense unasked.
-  The section reopens by itself when the screen remounts onto options already set.
+  The section always *opens* closed, though, even onto options already set (an
+  edit's date, a draft's split): that was asked for, so options can apply while
+  hidden until the section is opened and closed again.
 - **The date is a day, not a moment, and `null` is today.** A back-dated entry
   is stamped with the picked day at the current time of day (`onDay`), so it
   sorts sensibly within that day; nothing after today is pickable. The split and
   the repeat are measured from it, and a back-dated schedule books its missed
   occurrences straight after `startRecurring` rather than waiting for the next
   foreground.
+
+**Add is the one form, for new transactions and edits alike.** Spend's sheet
+holds only the actions (Edit, Stop repeating, Delete); Edit hands the row to
+`App.tsx`'s `startEdit`, which fills the Add screen from it and sends it to the
+Add tab. Anything added to the form is then editable for free. Four rules:
+
+- **The half-typed new expense is set aside, not lost.** `startEdit` stashes
+  the entry and `endEdit` puts it back, whether the edit was saved, cancelled
+  or abandoned.
+- **Leaving the Add tab abandons an edit.** It belongs to the trip from Spend;
+  left waiting behind the + button it would turn a later "add" into a save.
+- **Closing "Advanced" reverts to the transaction's own values** (`defaults`),
+  not to blank ones — clearing a real split's months would be an edit nobody
+  asked for.
+- **Repeats is hidden while editing**, for the reason Edit acts on one
+  occurrence. `SplitEdit.occurredAt` moves the first part; the time of day is
+  kept, so moving a row to another day doesn't reorder it within that day.
 
 **Money is integer cents, everywhere.** Never floats, never a formatted string in
 the database. Format only via `src/format.ts`. The euro symbol *trails* the

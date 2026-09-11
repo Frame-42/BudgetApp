@@ -8,7 +8,7 @@ import { SpendItemSheet } from '../components/SpendItemSheet';
 import { MonthPickerSheet } from '../components/MonthPickerSheet';
 import { Choice, MonthStepper, monthLabel, pillStyles } from '../components/MonthStepper';
 import { tapSelect } from '../haptics';
-import type { SplitEdit, SplitTarget } from '../db/split';
+import type { SplitTarget } from '../db/split';
 import type { TransactionItem } from '../queries/transactions';
 import type { Period, TransactionFeed } from '../state/useTransactionFeed';
 import { figure } from '../format';
@@ -34,17 +34,15 @@ const periodLabel = (period: Period) => {
 /** 02 — Spend: every transaction, and the ways to find one. */
 export function SpendScreen({
   feed,
-  categories,
   contentInset,
-  onSave,
+  onEdit,
   onDelete,
   onStopRecurring,
 }: {
   feed: TransactionFeed;
-  /** Live categories, for the edit sheet's chips. */
-  categories: { id: string; name: string }[];
   contentInset: { top: number; bottom: number };
-  onSave: (input: SplitEdit) => void;
+  /** Hands the row to the Add screen, where it is edited. */
+  onEdit: (item: TransactionItem) => void;
   onDelete: (target: SplitTarget) => void;
   onStopRecurring: (id: string) => void;
 }) {
@@ -244,9 +242,8 @@ export function SpendScreen({
 
       <SpendItemSheet
         item={selected}
-        categories={categories}
         onClose={() => setSelected(null)}
-        onSave={onSave}
+        onEdit={onEdit}
         onDelete={onDelete}
         onStopRecurring={onStopRecurring}
       />

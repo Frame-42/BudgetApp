@@ -8,10 +8,10 @@ import { CADENCE_WORD, RepeatCard } from '../components/RepeatCard';
 import { SplitCard } from '../components/SplitCard';
 import { tapSelect } from '../haptics';
 import { morph } from '../motion';
-import { splitAmounts } from '../db/split';
+import { partInMonth } from '../db/split';
 import type { Cadence } from '../db/types';
 import { figure, MAX_MERCHANT_LENGTH, parseAmountToCents } from '../format';
-import { occurrenceIndex, onDay } from '../time';
+import { onDay } from '../time';
 import { color, fg, radius, w } from '../theme';
 
 /**
@@ -23,6 +23,12 @@ import { color, fg, radius, w } from '../theme';
  * Closing the section puts all three back to their defaults rather than hiding
  * them — an option still applying while nobody can see it would be written into
  * the next expense unasked.
+ *
+ * It is also where a transaction is edited: Spend's Edit lands here with the
+ * form filled in. The defaults are then the transaction's own values, so
+ * closing "Advanced" undoes changes rather than clearing what was there, and
+ * Repeats is hidden — an edit is about this one occurrence, and stopping a
+ * schedule is Spend's to offer.
  */
 export function AddScreen({
   amount,
@@ -38,9 +44,12 @@ export function AddScreen({
   onMonthsChange,
   cadence,
   onCadenceChange,
+  defaults,
+  editing,
   leftToSpendCents,
   daysRemaining,
   onSubmit,
+  onCancel,
 }: {
   amount: string;
   onAmountChange: (next: string) => void;
@@ -58,15 +67,24 @@ export function AddScreen({
   /** Null when it happens once. */
   cadence: Cadence | null;
   onCadenceChange: (next: Cadence | null) => void;
+  /** What closing "Advanced" puts the options back to. */
+  defaults: { day: number | null; months: number; cadence: Cadence | null };
+  /** Set while an existing transaction is being edited. */
+  editing: {
+    income: boolean;
+    /** Its part in this month as it stands, already inside `leftToSpendCents`. */
+    replacesCents: number;
+  } | null;
   leftToSpendCents: number;
   daysRemaining: number;
   onSubmit: () => void;
+  /** Leaves an edit without saving; unused when adding. */
+  onCancel: () => void;
 }) {
-  /* The screen unmounts on every tab switch while the options live in App, so
-     coming back to options already set has to reopen the section they're in. */
-  const [advanced, setAdvanced] = useState(
-    () => day !== null || months > 1 || cadence !== null,
-  );
+  /* Always starts closed, even onto options already set — an edit's date, a
+     draft's split. They still apply while hidden; only closing the section
+     puts them back. */
+  const [advanced, setAdvanced] = useState(false);
 
   const display = amount === '' ? '0' : amount;
   const amountCents = parseAmountToCents(amount);
@@ -74,17 +92,18 @@ export function AddScreen({
   const at = day === null ? now : onDay(day, now);
   /* Only the part that lands in this month counts against what is left: the
      first of a split, a later one when it was back-dated into an earlier month,
-     none when every part has already been and gone. */
-  const part = occurrenceIndex(at, 'month', now);
-  const remainingCents = leftToSpendCents - (splitAmounts(amountCents, months)[part] ?? 0);
+     none when every part has already been and gone. An edit trades its old part
+     for its new one. */
+  const remainingCents =
+    leftToSpendCents + (editing?.replacesCents ?? 0) - partInMonth(amountCents, months, at, now);
 
   const toggleAdvanced = () => {
     tapSelect();
     morph();
     if (advanced) {
-      onDayChange(null);
-      onMonthsChange(1);
-      onCadenceChange(null);
+      onDayChange(defaults.day);
+      onMonthsChange(defaults.months);
+      onCadenceChange(defaults.cadence);
     }
     setAdvanced(!advanced);
   };
@@ -93,12 +112,14 @@ export function AddScreen({
     <View style={styles.screen}>
       <View style={styles.header}>
         <T size={19} lineHeight={21} tracking={-0.01}>
-          New expense
+          {editing ? (editing.income ? 'Edit income' : 'Edit expense') : 'New expense'}
         </T>
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: advanced }}
-          accessibilityHint={advanced ? 'Closing resets date, split and repeat' : undefined}
+          accessibilityHint={
+            advanced ? (editing ? 'Closing undoes date and split changes' : 'Closing resets date, split and repeat') : undefined
+          }
           onPress={toggleAdvanced}
           hitSlop={8}
           style={({ pressed }) => [
@@ -133,12 +154,18 @@ export function AddScreen({
             €
           </T>
         </View>
-        <T size={11.5} alpha={0.38}>
-          Leaves {figure(remainingCents)} € for {daysRemaining} days
-        </T>
+        {/* Income isn't spending, so it has nothing to say about what is left. */}
+        {editing?.income ? null : (
+          <T size={11.5} alpha={0.38}>
+            Leaves {figure(remainingCents)} € for {daysRemaining} days
+          </T>
+        )}
       </HeroCard>
 
-      <CategoryChips categories={categories} value={categoryId} onChange={onCategoryChange} />
+      {/* Income has no category to move it to — the chips would be a lie. */}
+      {editing?.income ? null : (
+        <CategoryChips categories={categories} value={categoryId} onChange={onCategoryChange} />
+      )}
 
       <FieldSurface style={[cardStyle(true), styles.nameCard]}>
         <Eyebrow>For</Eyebrow>
@@ -164,21 +191,39 @@ export function AddScreen({
             totalCents={amountCents}
             startAt={at}
           />
-          <RepeatCard value={cadence} onChange={onCadenceChange} startAt={at} />
+          {editing ? null : (
+            <RepeatCard value={cadence} onChange={onCadenceChange} startAt={at} />
+          )}
         </>
       ) : null}
 
       <Keypad value={amount} onChange={onAmountChange} />
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={onSubmit}
-        style={({ pressed }) => [styles.submit, pressed && { opacity: 0.85 }]}
-      >
-        <T weight="medium" size={13.5} tracking={-0.01} style={{ color: color.ink }}>
-          {cadence ? `Add ${CADENCE_WORD[cadence]} expense` : 'Add expense'}
-        </T>
-      </Pressable>
+      <View style={styles.footer}>
+        {editing ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              tapSelect();
+              onCancel();
+            }}
+            style={({ pressed }) => [styles.cancel, pressed && { backgroundColor: w(0.12) }]}
+          >
+            <T size={13.5} alpha={0.55}>
+              Cancel
+            </T>
+          </Pressable>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          onPress={onSubmit}
+          style={({ pressed }) => [styles.submit, pressed && { opacity: 0.85 }]}
+        >
+          <T weight="medium" size={13.5} tracking={-0.01} style={{ color: color.ink }}>
+            {editing ? 'Save' : cadence ? `Add ${CADENCE_WORD[cadence]} expense` : 'Add expense'}
+          </T>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -207,7 +252,19 @@ const styles = StyleSheet.create({
   },
   toggleOn: { backgroundColor: color.textStrong },
   toggleOff: { backgroundColor: w(0.05), borderWidth: 1, borderColor: w(0.07) },
+  footer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cancel: {
+    height: 50,
+    paddingHorizontal: 22,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: w(0.045),
+    borderWidth: 1,
+    borderColor: w(0.055),
+  },
   submit: {
+    flex: 1,
     height: 50,
     borderRadius: radius.pill,
     backgroundColor: color.textStrong,
