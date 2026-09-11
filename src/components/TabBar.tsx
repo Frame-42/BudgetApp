@@ -8,7 +8,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { color, fg, font, radius, track, w } from '../theme';
+import { font, makeStyles, radius, track, useTheme } from '../theme';
 import { AddIcon, HomeIcon, SpendIcon, TrendsIcon, YouIcon } from './Icons';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -39,6 +39,8 @@ export function TabBar({
   onChange: (index: number) => void;
   bottomInset: number;
 }) {
+  const styles = useStyles();
+  const { color, fg } = useTheme();
   const select = (index: number) => {
     LayoutAnimation.configureNext({
       duration: 280,
@@ -76,7 +78,7 @@ export function TabBar({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   bar: {
     position: 'absolute',
     left: 0,
@@ -118,4 +120,4 @@ const styles = StyleSheet.create({
     letterSpacing: track(-0.01, 12.5),
     color: color.ink,
   },
-});
+}));

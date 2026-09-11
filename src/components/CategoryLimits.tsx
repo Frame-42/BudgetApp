@@ -4,7 +4,7 @@ import { Card, Eyebrow, FieldSurface, T, TextField } from './primitives';
 import { tapSelect } from '../haptics';
 import { euroLabel } from '../format';
 import { digits } from './BudgetAmountCard';
-import { color, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 export type Limits = Record<string, string>;
 
@@ -34,6 +34,8 @@ export function CategoryLimits({
   limits: Limits;
   onChange: (next: Limits) => void;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   const assignedCents = assignedCentsOf(limits, categories);
   const leftToAssignCents = budgetCents - assignedCents;
 
@@ -136,7 +138,7 @@ export function CategoryLimits({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   assignCard: {
     borderRadius: radius.tile,
     paddingVertical: 16,
@@ -178,4 +180,4 @@ const styles = StyleSheet.create({
   },
   limitInput: { minWidth: 56, textAlign: 'right', color: color.text },
   emptyCard: { borderRadius: radius.tile, padding: 18 },
-});
+}));

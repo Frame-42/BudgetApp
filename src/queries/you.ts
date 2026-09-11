@@ -3,6 +3,7 @@ import { listCategories } from '../repo/categories';
 import { listSettings } from '../repo/settings';
 import { effectiveLimits, monthlyBudgetCents } from '../repo/budgets';
 import { monthKey } from '../time';
+import { parseAppearance, type Appearance } from '../theme';
 
 /**
  * Which setting a row is, so the screen can attach an editor without matching on
@@ -31,6 +32,8 @@ export type YouData = {
    * between visits rather than reshuffling as spending moves.
    */
   categories: { id: string; name: string }[];
+  /** Drives the whole app's palette, not just the row that shows it. */
+  appearance: Appearance;
 };
 
 /**
@@ -81,11 +84,16 @@ export async function loadYou(db: SQLiteDatabase, at: number = Date.now()): Prom
     budgetCents: budget,
     categoryLimits: Object.fromEntries(limits),
     categories: categories.map((category) => ({ id: category.id, name: category.name })),
+    appearance: parseAppearance(byKey.get('appearance')),
     settings: [
       { key: 'budget', name: 'Monthly budget', value: budget ? `${Math.round(budget / 100).toLocaleString('en-US')} €` : '—' },
       { key: 'categories', name: 'Categories', value: String(categories.length) },
       { key: 'recap', name: 'Weekly recap', value: byKey.get('weekly_recap') ?? 'SUN' },
-      { key: 'appearance', name: 'Appearance', value: byKey.get('appearance') ?? 'DARK' },
+      {
+        key: 'appearance',
+        name: 'Appearance',
+        value: { system: 'SYS', dark: 'DARK', light: 'LIGHT' }[parseAppearance(byKey.get('appearance'))],
+      },
     ],
   };
 }

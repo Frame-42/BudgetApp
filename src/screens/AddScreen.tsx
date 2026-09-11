@@ -12,7 +12,7 @@ import { partInMonth } from '../db/split';
 import type { Cadence } from '../db/types';
 import { figure, MAX_MERCHANT_LENGTH, parseAmountToCents } from '../format';
 import { onDay } from '../time';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /**
  * 03 — Add: expense entry.
@@ -81,6 +81,8 @@ export function AddScreen({
   /** Leaves an edit without saving; unused when adding. */
   onCancel: () => void;
 }) {
+  const styles = useStyles();
+  const { color, w, fg } = useTheme();
   /* Always starts closed, even onto options already set — an edit's date, a
      draft's split. They still apply while hidden; only closing the section
      puts them back. */
@@ -167,7 +169,7 @@ export function AddScreen({
         <CategoryChips categories={categories} value={categoryId} onChange={onCategoryChange} />
       )}
 
-      <FieldSurface style={[cardStyle(true), styles.nameCard]}>
+      <FieldSurface style={[cardStyle(color, true), styles.nameCard]}>
         <Eyebrow>For</Eyebrow>
         <TextField
           value={merchant}
@@ -228,7 +230,7 @@ export function AddScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   screen: { gap: 14 },
   header: {
     flexDirection: 'row',
@@ -271,4 +273,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

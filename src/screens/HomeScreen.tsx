@@ -5,10 +5,12 @@ import { BudgetRing } from '../components/Charts';
 import { Amount, Card, Divider, Eyebrow, HeroCard, StatusDot, T } from '../components/primitives';
 import type { HomeData } from '../queries/home';
 import { euroLabel, figure } from '../format';
-import { color, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** 01 — Home: on track at a glance. */
 export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
+  const styles = useStyles();
+  const { color, w, mark } = useTheme();
   const firstName = name.split(' ')[0];
   const hour = new Date().getHours();
   const partOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
@@ -121,7 +123,7 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
                     styles.trackFill,
                     {
                       width: `${cat.fill * 100}%`,
-                      backgroundColor: `rgba(233,235,242,${cat.alpha})`,
+                      backgroundColor: mark(cat.alpha),
                     },
                   ]}
                 />
@@ -156,7 +158,7 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   screen: { gap: 12 },
   header: {
     flexDirection: 'row',
@@ -208,4 +210,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-});
+}));

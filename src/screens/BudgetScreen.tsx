@@ -17,7 +17,7 @@ import { tapDone, tapSelect } from '../haptics';
 import { euroLabel } from '../format';
 import { daysInMonth } from '../time';
 import type { BudgetScope } from '../db/budget';
-import { GUTTER, color, radius, w } from '../theme';
+import { GUTTER, makeStyles, radius, useTheme } from '../theme';
 
 export type BudgetDraft = {
   monthlyBudgetCents: number;
@@ -61,6 +61,8 @@ export function BudgetScreen({
   onClose: () => void;
   onSave: (draft: BudgetDraft) => void;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   const insets = useSafeAreaInsets();
   const [amountCents, setAmountCents] = useState(0);
   const [limits, setLimits] = useState<Limits>({});
@@ -149,7 +151,8 @@ export function BudgetScreen({
             contentContainerStyle={[styles.content, { paddingBottom: footerHeight + 24 }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
+            /* No dismiss on drag: a field closes when something else is tapped
+               or on Done, never because the page was scrolled to look at it. */
           >
             <BudgetAmountCard valueCents={amountCents} onChange={setAmountCents} />
 
@@ -202,7 +205,7 @@ export function BudgetScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   fill: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -238,4 +241,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

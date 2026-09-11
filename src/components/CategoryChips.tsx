@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { T } from './primitives';
 import { tapSelect } from '../haptics';
 import { morph } from '../motion';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** One pill. Split out so onboarding can build a multi-select row from the same
  *  shape without bending this file's single-select contract. */
@@ -19,6 +19,8 @@ export function Chip({
   /** Onboarding draws the same pill a size up; the tab screens stay at 'sm'. */
   size?: 'sm' | 'md';
 }) {
+  const styles = useStyles();
+  const { color, fg } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -64,6 +66,8 @@ export function CategoryChips({
   value: string | null;
   onChange: (next: string) => void;
 }) {
+  const styles = useStyles();
+  const { fg } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const folds = categories.length > COLLAPSED + 1;
 
@@ -112,7 +116,7 @@ export function CategoryChips({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 2 },
   chip: {
     height: 34,
@@ -126,4 +130,4 @@ const styles = StyleSheet.create({
   chipOff: { backgroundColor: w(0.05), borderWidth: 1, borderColor: w(0.07) },
   /* Unfilled, so it reads as a control rather than an eleventh category. */
   chipMore: { borderWidth: 1, borderColor: w(0.07), borderStyle: 'dashed' },
-});
+}));

@@ -14,7 +14,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { color, fg, font, heroAngle, radius, track } from '../theme';
+import { font, heroAngle, makeStyles, radius, track, useTheme, type Palette } from '../theme';
 
 /**
  * Geist needs ~1.15em of line box or iOS crops the ascenders of tall figures.
@@ -38,6 +38,7 @@ export function Eyebrow({
   style,
   ...rest
 }: TextProps & { size?: number; alpha?: number; tracking?: number }) {
+  const { fg } = useTheme();
   return (
     <Text
       {...rest}
@@ -75,6 +76,7 @@ export function T({
   tracking?: number;
   lineHeight?: number;
 }) {
+  const { color, fg } = useTheme();
   return (
     <Text
       {...rest}
@@ -165,6 +167,7 @@ export function TextField({
   /* Null outside a FieldSurface, which is the plain TextInput this has always
      been — nothing else has to change to keep working. */
   const target = React.useContext(FieldTarget);
+  const { color, fg, tint } = useTheme();
   const attach = (node: TextInput | null) => {
     if (target) target.current = node;
     if (typeof ref === 'function') ref(node);
@@ -177,7 +180,7 @@ export function TextField({
       placeholderTextColor={fg(0.3)}
       selectionColor={color.accentBright}
       cursorColor={color.accentBright}
-      keyboardAppearance="dark"
+      keyboardAppearance={tint}
       underlineColorAndroid="transparent"
       {...rest}
       style={[
@@ -208,6 +211,8 @@ export function Amount({
   symbolSize?: number;
   children?: React.ReactNode;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   return (
     <View style={styles.amountRow}>
       <T
@@ -231,17 +236,18 @@ export function Amount({
  * The Card look on its own, so something that is not a `View` can wear it —
  * a `FieldSurface` around a field that used to be a Card, in particular.
  */
-export const cardStyle = (quiet?: boolean): ViewStyle => ({
+export const cardStyle = (color: Palette['color'], quiet?: boolean): ViewStyle => ({
   borderRadius: radius.card,
   backgroundColor: quiet ? color.tileQuiet : color.tile,
   borderWidth: 1,
   borderColor: quiet ? color.tileQuietBorder : color.tileBorder,
 });
 
-/** Flat surface: rgba(255,255,255,.04) over a .06 border. */
+/** Flat surface: the overlay at .04 over a .06 border. */
 export function Card({ style, children, quiet, ...rest }: ViewProps & { quiet?: boolean }) {
+  const { color } = useTheme();
   return (
-    <View {...rest} style={[cardStyle(quiet), style]}>
+    <View {...rest} style={[cardStyle(color, quiet), style]}>
       {children}
     </View>
   );
@@ -249,9 +255,10 @@ export function Card({ style, children, quiet, ...rest }: ViewProps & { quiet?: 
 
 /** Raised surface: the 165deg white wash used for every screen's lead tile. */
 export function HeroCard({ style, children }: { style?: ViewStyle | ViewStyle[]; children: React.ReactNode }) {
+  const { color } = useTheme();
   return (
     <LinearGradient
-      colors={color.hero as unknown as [string, string]}
+      colors={color.hero}
       start={heroAngle.start}
       end={heroAngle.end}
       style={[
@@ -266,9 +273,11 @@ export function HeroCard({ style, children }: { style?: ViewStyle | ViewStyle[];
 
 /** 1px rule that fades out to the right. */
 export function Divider() {
+  const styles = useStyles();
+  const { color, w } = useTheme();
   return (
     <LinearGradient
-      colors={[color.tileBorder, 'rgba(255,255,255,0)']}
+      colors={[color.tileBorder, w(0)]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
       style={styles.divider}
@@ -278,6 +287,7 @@ export function Divider() {
 
 /** The one spot of colour in the app: an "on track" status dot with its glow. */
 export function StatusDot() {
+  const styles = useStyles();
   return (
     <View style={styles.glow}>
       <View style={styles.dot} />
@@ -285,7 +295,7 @@ export function StatusDot() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color }) => ({
   amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   divider: { height: 1 },
   glow: {
@@ -295,18 +305,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.accent },
-});
+}));
 
 /**
  * The app's page ground. Lives here rather than in `App.tsx` because the
  * full-screen editors render inside their own Modal, outside App's tree, and a
  * second copy of the gradient config is a drift waiting to happen.
  */
-export function Background({ children }: { children: React.ReactNode }) {
+export function Background({ children }: { children?: React.ReactNode }) {
+  const { color } = useTheme();
   return (
     <LinearGradient
-      colors={color.bg as unknown as [string, string, string]}
-      locations={color.bgStops as unknown as [number, number, number]}
+      colors={color.bg}
+      locations={color.bgStops}
       /* CSS 178deg: essentially top-to-bottom with a hair of tilt. */
       start={{ x: 0.48, y: 0 }}
       end={{ x: 0.52, y: 1 }}

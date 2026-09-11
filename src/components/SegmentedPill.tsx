@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { T } from './primitives';
 import { tapSelect } from '../haptics';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** Padding between the track's edge and the thumb, on all four sides. */
 const INSET = 4;
@@ -30,6 +30,8 @@ export function SegmentedPill<Value extends string>({
   onChange: (value: Value) => void;
   accessibilityLabel?: string;
 }) {
+  const styles = useStyles();
+  const { color, fg } = useTheme();
   /* Measured, not assumed: the track fills its column, and the thumb has to be
      exactly half of whatever that turns out to be on this device. */
   const [trackWidth, setTrackWidth] = useState(0);
@@ -120,7 +122,7 @@ export function SegmentedPill<Value extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   track: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -149,4 +151,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: color.textStrong,
   },
-});
+}));

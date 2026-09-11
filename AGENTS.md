@@ -48,7 +48,7 @@ them — change `app.json` and let the next prebuild regenerate.
 
 | Path | Holds |
 |---|---|
-| `src/theme.ts` | Design tokens — surfaces, the two accent tints, radii, fonts |
+| `src/theme.ts` | Design tokens — the dark and light palettes, `useTheme`/`makeStyles`, radii, fonts |
 | `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor), `SegmentedPill.tsx` (the two-state slide switch), `DateCard.tsx` + `SplitCard.tsx` + `RepeatCard.tsx` (Add's advanced options, in that order), `DayPickerSheet.tsx` (the date card's calendar), `MonthStepper.tsx` (the carets + swipeable month label + tap-for-choices pill, shared by Spend and the day picker), `MonthPickerSheet.tsx` (its `MonthGrid` also shows inside the day picker) |
 | `src/screens/` | One per tab, plus `OnboardingScreen` and `BudgetScreen` (a full-screen Modal editor); presentational, fed by props |
 | `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
@@ -392,6 +392,26 @@ figure is already a large target, and the non-typing state has its own Pressable
 **Colour is reserved for status.** The palette is white-at-an-alpha over
 graphite, plus the two accent tints in `theme.ts` for on-track status and income.
 Introducing a new hue is a design decision, not a styling one.
+
+**Every colour comes from the palette in force, never from a module constant.**
+There are two palettes — graphite, and its inversion over a pearl ground — and
+tapping the You screen's Appearance row steps between SYS, DARK and LIGHT. The
+default is `DEFAULT_APPEARANCE` in `theme.ts`: System (follows the phone) in a
+release build, Dark while `__DEV__`. A tappable settings row carries a chevron; a
+read-only one doesn't. So `color`, `w`, `fg` and `mark` are read from `useTheme()`
+inside a component, and a stylesheet that uses any of them is
+`makeStyles((theme) => ({…}))` called as a hook, which caches one sheet per
+scheme. A literal `rgba(…)` or hex in a component is a colour that stays dark
+in light mode: add a token to both palettes instead. Three things outside React
+follow the choice too, all from `App.tsx`'s `Themed`: `Appearance.setColorScheme`
+(the keyboard, alerts and share sheet), the status bar, and the native root
+background. The choice is the `appearance` setting (`SYSTEM | DARK | LIGHT`);
+migration v5 turned the seed's old `DARK` into the default, since until then the
+row could not be changed and so nobody had chosen it.
+
+`app.json`'s `userInterfaceStyle` is `automatic`. A dev build compiled while it
+said `dark` has that baked into its Info.plist and will always report dark for
+System until it is rebuilt with `npm run ios`; Expo Go picks it up on a cold start.
 
 ## Verifying changes on this machine
 

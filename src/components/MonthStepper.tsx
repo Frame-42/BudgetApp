@@ -5,7 +5,7 @@ import { CaretIcon } from './Icons';
 import { tapSelect } from '../haptics';
 import { isHorizontalSwipe } from '../motion';
 import { addMonths, MONTH_ABBR } from '../time';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** 'SEP 2026' — a month as the stepper names it. */
 export const monthLabel = (ts: number) => {
@@ -24,6 +24,7 @@ function SwipeLabel({ label, month, canStepBack, canStepForward, onStep, onPress
   swiping: boolean;
   onSwipingChange: (swiping: boolean) => void;
 }) {
+  const styles = useStyles();
   const offset = useRef(new Animated.Value(0)).current;
   const settling = useRef(false);
   const dragStart = useRef(0);
@@ -161,6 +162,8 @@ function Step({
   hidden?: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const { fg } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -254,6 +257,8 @@ export function Choice({
   alpha?: number;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -278,7 +283,7 @@ export function Choice({
 }
 
 /** The frame around the stepper, and its wider shape once it opens onto choices. */
-export const pillStyles = StyleSheet.create({
+export const usePillStyles = makeStyles(({ w }) => ({
   pill: {
     overflow: 'hidden',
     flexDirection: 'row',
@@ -292,12 +297,12 @@ export const pillStyles = StyleSheet.create({
     borderColor: w(0.07),
   },
   open: { flex: 1, paddingHorizontal: 6 },
-});
+}));
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color }) => ({
   step: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.6 },
   label: { paddingHorizontal: 6, height: 26, justifyContent: 'center' },
   choice: { paddingHorizontal: 12, height: 26, borderRadius: radius.pill, justifyContent: 'center' },
   choiceOn: { backgroundColor: color.textStrong },
-});
+}));

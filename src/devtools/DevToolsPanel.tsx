@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Card, Eyebrow, T } from '../components/primitives';
-import { color } from '../theme';
+import { makeStyles } from '../theme';
 
 type Tool = { name: string; onPress: () => void };
 
@@ -18,6 +18,7 @@ export function DevToolsPanel({
   onReset: () => void;
   onLoadSample: () => void;
 }) {
+  const styles = useStyles();
   const tools: Tool[] = [
     { name: 'Reset to first run', onPress: onReset },
     { name: 'Load sample data', onPress: onLoadSample },
@@ -46,10 +47,10 @@ export function DevToolsPanel({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color }) => ({
   wrap: { gap: 10 },
   label: { paddingHorizontal: 4 },
   card: { paddingVertical: 6, paddingHorizontal: 20 },
   row: { paddingVertical: 16 },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: color.hairline },
-});
+}));

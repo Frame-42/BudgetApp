@@ -5,7 +5,7 @@ import { CaretIcon } from './Icons';
 import { DayPickerSheet } from './DayPickerSheet';
 import { tapSelect } from '../haptics';
 import { dayLabel, startOfDay } from '../time';
-import { color, fg } from '../theme';
+import { makeStyles, useTheme } from '../theme';
 
 /** 'Today', 'Yesterday', 'Tue 25 Aug' — and the year once it isn't this one. */
 const label = (day: number, now: number) => {
@@ -29,6 +29,8 @@ export function DateCard({
   value: number | null;
   onChange: (next: number | null) => void;
 }) {
+  const styles = useStyles();
+  const { color, fg } = useTheme();
   const [picking, setPicking] = useState(false);
   const now = Date.now();
   const day = value ?? startOfDay(now);
@@ -43,7 +45,7 @@ export function DateCard({
           tapSelect();
           setPicking(true);
         }}
-        style={({ pressed }) => [cardStyle(true), styles.card, pressed && { opacity: 0.8 }]}
+        style={({ pressed }) => [cardStyle(color, true), styles.card, pressed && { opacity: 0.8 }]}
       >
         <Eyebrow>Date</Eyebrow>
         <View style={styles.value}>
@@ -65,7 +67,7 @@ export function DateCard({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(() => ({
   /* The split card's row height, so the three options read as one stack. */
   card: {
     flexDirection: 'row',
@@ -76,4 +78,4 @@ const styles = StyleSheet.create({
     minHeight: 54,
   },
   value: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-});
+}));

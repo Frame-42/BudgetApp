@@ -4,7 +4,7 @@ import { T } from './primitives';
 import { tapSelect } from '../haptics';
 import { amountLabel } from '../format';
 import type { TransactionItem } from '../queries/transactions';
-import { color, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** One line of the Spend list. Memoized: it is a virtualized `renderItem`. */
 export const TransactionRow = React.memo(function TransactionRow({
@@ -17,6 +17,8 @@ export const TransactionRow = React.memo(function TransactionRow({
   ruled: boolean;
   onPress: (item: TransactionItem) => void;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -48,7 +50,7 @@ export const TransactionRow = React.memo(function TransactionRow({
   );
 });
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -60,4 +62,4 @@ const styles = StyleSheet.create({
   },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: color.hairline },
   rowPressed: { backgroundColor: w(0.04), borderRadius: radius.key },
-});
+}));

@@ -21,7 +21,7 @@ import {
   type ImportPlan,
   type ImportRow,
 } from '../import/plan';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 type Mode = 'pick' | 'cutoff' | 'preview' | 'review' | 'done';
 
@@ -50,6 +50,8 @@ export function ImportSheet({
   onPlan: (text: string) => Promise<ImportPlan>;
   onRun: (plan: ImportPlan) => Promise<number>;
 }) {
+  const styles = useStyles();
+  const { color, fg } = useTheme();
   const [mode, setMode] = useState<Mode>('pick');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -403,6 +405,8 @@ function ReviewRow({
   onAssign: (categoryId: string) => void;
   onSkip: () => void;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   const row = group[0];
   const many = group.length > 1;
   const total = group.reduce((sum, one) => sum + one.amountCents, 0);
@@ -468,7 +472,7 @@ function ReviewRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -498,4 +502,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   quiet: { height: 40, alignItems: 'center', justifyContent: 'center' },
-});
+}));

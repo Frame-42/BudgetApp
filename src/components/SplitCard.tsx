@@ -6,7 +6,7 @@ import { tapSelect } from '../haptics';
 import { amountLabel } from '../format';
 import { clampMonths, MAX_SPLIT_MONTHS, splitAmounts } from '../db/split';
 import { addMonthsKeepingDay, MONTH_ABBR } from '../time';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** 'SEP 2026' — the ends of a split's span. */
 const monthLabel = (ts: number) => {
@@ -26,6 +26,8 @@ function Nudge({
   enabled: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const { fg } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -66,6 +68,8 @@ export function SplitCard({
   totalCents: number;
   startAt: number;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   const step = (delta: number) => {
     const next = clampMonths(months + delta);
     if (next === months) return;
@@ -78,7 +82,7 @@ export function SplitCard({
   const perMonth = splitAmounts(totalCents, months)[0];
 
   return (
-    <View style={[cardStyle(true), styles.card]}>
+    <View style={[cardStyle(color, true), styles.card]}>
       <View style={styles.row}>
         <Eyebrow>Spread over</Eyebrow>
         <View style={styles.stepper}>
@@ -106,7 +110,7 @@ export function SplitCard({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   card: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 2 },
@@ -120,4 +124,4 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: w(0.12) },
   /* Fixed width, so stepping from 9 to 10 months doesn't shuffle the buttons. */
   monthCount: { minWidth: 74, textAlign: 'center', color: color.textStrong },
-});
+}));
