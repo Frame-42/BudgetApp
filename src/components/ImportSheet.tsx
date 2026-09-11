@@ -191,6 +191,9 @@ export function ImportSheet({
             {plan.ignoredIncoming > 0 ? (
               <Count value={plan.ignoredIncoming} label="incoming" quiet />
             ) : null}
+            {plan.ignoredSaveback > 0 ? (
+              <Count value={plan.ignoredSaveback} label="saveback" quiet />
+            ) : null}
             {plan.alreadyPresent > 0 ? (
               <Count value={plan.alreadyPresent} label="already in" quiet />
             ) : null}
@@ -246,6 +249,9 @@ export function ImportSheet({
             <Count value={imported} label="imported" />
             {plan.ignoredIncoming > 0 ? (
               <Count value={plan.ignoredIncoming} label="incoming" quiet />
+            ) : null}
+            {plan.ignoredSaveback > 0 ? (
+              <Count value={plan.ignoredSaveback} label="saveback" quiet />
             ) : null}
             {plan.alreadyPresent > 0 ? (
               <Count value={plan.alreadyPresent} label="already in" quiet />
@@ -373,7 +379,7 @@ const styles = StyleSheet.create({
     borderBottomColor: color.hairline,
   },
   rowHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  counts: { flexDirection: 'row', gap: 26, paddingVertical: 2 },
+  counts: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 26, rowGap: 12, paddingVertical: 2 },
   action: {
     height: 52,
     borderRadius: radius.key,

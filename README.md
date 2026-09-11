@@ -53,12 +53,13 @@ Xcode project; a hand edit inside `ios/` is erased by the next prebuild.
 ### Checks
 
 ```bash
-npx tsc --noEmit     # the only check that exists; keep it clean
+npm test             # focused pure-function and query-construction tests
+npx tsc --noEmit     # typecheck; keep it clean
 ```
 
-There is no test runner and no linter yet. `src/queries/`, `src/import/`,
-`src/format.ts` and `src/time.ts` are written as pure functions specifically so
-`jest-expo` can be added without rework.
+Tests run through `jest-expo`. There is no linter yet; `src/queries/`,
+`src/import/`, `src/format.ts` and `src/time.ts` keep their derivations pure so
+they can be checked without a simulator.
 
 ---
 
@@ -170,9 +171,11 @@ id is already present is skipped. Rows without one get a fuzzy check — same
 cents, ±3 days, same merchant key — which only ever *flags*, because one
 afternoon can legitimately hold two runs to the same shop.
 
-Categorisation resolves in one order: securities purchase → what the user has
-previously chosen for that merchant → a `category` column naming a category the
-app has → MCC table → review. The bank's own column sits below the memory
+SAVEBACK investment contributions are excluded before categorisation: they are
+investments funded by a card benefit, not spending. Everything else resolves in
+one order: securities purchase → what the user has previously chosen for that
+merchant → a `category` column naming a category the app has → MCC table →
+review. The bank's own column sits below the memory
 deliberately: in a bank's file that column is a guess, and a guess must not
 outrank a decision the user already made. Nothing is ever auto-filed as "Other".
 

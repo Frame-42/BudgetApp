@@ -92,19 +92,21 @@ export function merchantKey(raw: string): string {
  * - Nothing maps to 'Other'. A code we don't know goes to review, where the user
  *   decides once and the merchant memory keeps it — filing it as Other would
  *   look like a decision while being the absence of one.
- * - 5912 (drug stores) and 5977 (cosmetics) are Shopping, not Health. A German
- *   drugstore basket is toiletries; leaving Health for 80xx keeps that category
- *   meaning actual medical spending.
+ * - 5912 (drug stores) and 5977 (cosmetics) are Groceries, not Health and not
+ *   Shopping. A German drugstore basket is toiletries, cleaning supplies and
+ *   staples — the same weekly shop as the supermarket, just a different door —
+ *   so it belongs beside 5411 rather than beside furniture and clothing.
+ *   Leaving Health for 80xx keeps that category meaning actual medical spending.
  */
 const MCC_CATEGORIES: Record<string, string[]> = {
-  Groceries: ['5411', '5422', '5441', '5451', '5462', '5499'],
+  Groceries: ['5411', '5422', '5441', '5451', '5462', '5499', '5912', '5977'],
   // 5813 is bars: a tab is eating-out spend, so it sits here rather than in Leisure.
   Dining: ['5811', '5812', '5813', '5814'],
   Transport: ['4111', '4121', '4131', '4784', '5533', '5541', '5542', '7523'],
   Shopping: [
     '5200', '5211', '5311', '5399', '5611', '5621', '5631', '5641', '5651',
-    '5655', '5661', '5691', '5699', '5712', '5732', '5734', '5912', '5940',
-    '5941', '5945', '5977', '5992', '5999',
+    '5655', '5661', '5691', '5699', '5712', '5732', '5734', '5940',
+    '5941', '5945', '5992', '5999',
   ],
   Health: ['5122', '5975', '5976', '8011', '8021', '8031', '8042', '8043', '8049', '8062', '8071', '8099'],
   Leisure: ['7832', '7841', '7911', '7922', '7929', '7932', '7933', '7991', '7996', '7997', '7998', '7999'],
@@ -132,3 +134,7 @@ export const categoryForMcc = (mcc: string): string | null => BY_CODE.get(mcc.tr
  */
 export const isSecuritiesPurchase = (row: { type: string; category: string }): boolean =>
   row.type.trim().toUpperCase() === 'BUY' || row.category.trim().toUpperCase() === 'TRADING';
+
+/** SAVEBACK investment contributions are not spending in the budget. */
+export const isSavebackInvestment = (type: string): boolean =>
+  type.trim().toUpperCase() === 'BENEFITS_SAVEBACK';

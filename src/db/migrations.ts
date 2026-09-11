@@ -134,10 +134,30 @@ CREATE INDEX transactions_external_id ON transactions (external_id);
 `;
 
 /**
+ * A transaction spread over several months: an annual insurance premium that
+ * belongs to twelve of them rather than to the day it left the account.
+ *
+ * Each part is an ordinary transaction row — its own date, its own share of the
+ * cents — and `split_id` is only what makes the group editable and deletable as
+ * one thing again. Materialised rather than derived on the way out so that every
+ * query already written keeps working untouched: a part sits in its month for
+ * Home, Trends, Spend and the CSV export exactly as a row typed there by hand
+ * would. `split_index` is the part's position, which is a fact about the row;
+ * the count and the total are aggregates and stay derived.
+ *
+ * Indexed, not UNIQUE — a split id is shared by every part, which is the point.
+ */
+const V3 = `
+ALTER TABLE transactions ADD COLUMN split_id TEXT;
+ALTER TABLE transactions ADD COLUMN split_index INTEGER;
+CREATE INDEX transactions_split_id ON transactions (split_id);
+`;
+
+/**
  * Ordered, append-only. To change the schema, add a step — never edit one that
  * has shipped, because devices in the field have already run it.
  */
-export const MIGRATIONS: string[] = [V1, V2];
+export const MIGRATIONS: string[] = [V1, V2, V3];
 
 /** Applies whatever hasn't run yet, tracked in PRAGMA user_version. */
 export async function migrate(db: SQLiteDatabase): Promise<void> {

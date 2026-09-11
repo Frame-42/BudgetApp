@@ -1,6 +1,22 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { dayLabel, startOfDay } from '../time';
 
+/**
+ * The group a row belongs to when its transaction was spread over months. The
+ * count and the total are aggregated over the live parts rather than stored, so
+ * they cannot drift from the rows they describe.
+ */
+export type ItemSplit = {
+  id: string;
+  /** This row's position, oldest part first. */
+  index: number;
+  count: number;
+  /** Every part added up — the figure the user actually typed. */
+  totalCents: number;
+  /** The first part's date: where the spread starts, and the edit's anchor. */
+  startAt: number;
+};
+
 export type TransactionItem = {
   id: string;
   merchant: string;
@@ -8,7 +24,10 @@ export type TransactionItem = {
   /** Preselects the chip when the row is edited; null on income. */
   categoryId: string | null;
   amountCents: number;
+  occurredAt: number;
   income: boolean;
+  /** Null unless this row is one month of a transaction spread over several. */
+  split: ItemSplit | null;
 };
 
 export type TransactionGroup = { key: string; title: string; items: TransactionItem[] };
@@ -92,10 +111,27 @@ export async function loadTransactionPage(
       occurred_at: number;
       category_id: string | null;
       category: string | null;
+      split_id: string | null;
+      split_index: number | null;
+      split_count: number | null;
+      split_total: number | null;
+      split_start: number | null;
     }>(
-      `SELECT t.id, t.merchant, t.amount_cents, t.occurred_at, t.category_id, c.name AS category
+      /* The split join is a grouped subquery rather than three correlated
+         SELECTs: it is one pass over the index, and rows outside a split miss
+         it entirely (`split_id IS NULL` matches nothing) and come back null. */
+      `SELECT t.id, t.merchant, t.amount_cents, t.occurred_at, t.category_id, c.name AS category,
+              t.split_id, t.split_index,
+              s.n AS split_count, s.total AS split_total, s.start_at AS split_start
          FROM transactions t
          LEFT JOIN categories c ON c.id = t.category_id
+         LEFT JOIN (SELECT split_id,
+                           COUNT(*)          AS n,
+                           SUM(amount_cents) AS total,
+                           MIN(occurred_at)  AS start_at
+                      FROM transactions
+                     WHERE deleted_at IS NULL AND split_id IS NOT NULL
+                     GROUP BY split_id) s ON s.split_id = t.split_id
         WHERE ${where}
         ORDER BY t.occurred_at DESC
         LIMIT ?`,
@@ -125,7 +161,20 @@ export async function loadTransactionPage(
       category: (row.category ?? (row.amount_cents > 0 ? 'Income' : 'Uncategorised')).toUpperCase(),
       categoryId: row.category_id,
       amountCents: row.amount_cents,
+      occurredAt: row.occurred_at,
       income: row.amount_cents > 0,
+      /* A group of one is a transaction, not a split — it reads as one and
+         edits as one, and the stale id is simply dropped on the next save. */
+      split:
+        row.split_id && (row.split_count ?? 0) > 1
+          ? {
+              id: row.split_id,
+              index: row.split_index ?? 0,
+              count: row.split_count as number,
+              totalCents: row.split_total ?? row.amount_cents,
+              startAt: row.split_start ?? row.occurred_at,
+            }
+          : null,
     });
   }
 

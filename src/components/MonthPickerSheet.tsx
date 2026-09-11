@@ -22,6 +22,7 @@ export function MonthPickerSheet({
   onClose: () => void;
 }) {
   const now = new Date();
+  const latestMonth = startOfMonth(now);
   const [year, setYear] = useState(() => new Date(monthStart ?? Date.now()).getFullYear());
 
   const years = monthsWithData.map((key) => Number(key.slice(0, 4)));
@@ -60,14 +61,17 @@ export function MonthPickerSheet({
       <View style={styles.grid}>
         {MONTH_ABBR.map((label, month) => {
           const start = startOfMonth(new Date(year, month, 1));
-          const enabled = has(month);
+          const future = start > latestMonth;
+          const enabled = !future && has(month);
           const on = selectedKey === monthKey(start);
           return (
             <Pressable
               key={label}
               accessibilityRole="button"
               accessibilityState={{ selected: on, disabled: !enabled }}
-              accessibilityHint={enabled ? undefined : 'No transactions in this month'}
+              accessibilityHint={
+                enabled ? undefined : future ? 'Future months are unavailable' : 'No transactions in this month'
+              }
               disabled={!enabled}
               onPress={() => {
                 tapSelect();

@@ -20,11 +20,12 @@ plugin) were reshaped after SDK 50.
 npm install
 npx expo start --ios     # Expo Go — the fast loop, still works
 npm run ios              # expo run:ios — compiles and installs the dev build
-npx tsc --noEmit         # the only check that exists; keep it clean
+npm test                 # focused pure-function tests via jest-expo
+npx tsc --noEmit         # typecheck; keep it clean
 ```
 
-There is no test runner and no linter configured. `src/queries/` is written as
-pure functions specifically so `jest-expo` can be added later without rework.
+There is no linter configured. Keep query and geometry helpers pure so they can
+be covered without a simulator.
 
 ## Native builds are possible now; Expo Go is still the fast loop
 
@@ -149,6 +150,50 @@ silently dead tap target.
 `listCategories` filters `archived = 0` so it leaves the chips, while `queries/trends.ts`
 joins without that filter so old spending keeps its label.
 
+**A split transaction is N real rows, not a spread computed at read time.**
+`src/db/split.ts` turns one transaction into one ordinary transaction row per
+month, sharing a `split_id` (migration v3). Deriving it on the way out instead
+would mean teaching Home, Trends, Spend, the donut, the weekly bars and the CSV
+export what a split is; materialising it means none of them ever find out — a
+part is simply spending in its own month. Six rules hold it together:
+
+- **The sheet edits the whole transaction, not the part that was held.** The
+  amount it seeds is `split.totalCents`, and the month count is the reach. The
+  head still shows the part, because that is the row the user tapped.
+- **A delete takes the group.** Leaving eleven twelfths of a purchase behind
+  because the sheet was opened on December is a trap, not a feature.
+- **The parts always sum back to the figure that was typed.** `splitAmounts`
+  hands the remainder to the earliest parts (1000 over 3 is 3.34 + 3.33 + 3.33),
+  so no cent is ever lost to rounding. The preview in the sheet calls the same
+  function, so the figure shown is the figure written.
+- **Later parts keep the day of the month, clamped.** `addMonthsKeepingDay`, not
+  `addMonths` — which lands on the 1st, right for a budget month and wrong here.
+  Every part is measured from the anchor rather than from its predecessor, so
+  31 Jan spread over 12 gives 12 distinct months with no drift, and 28 Feb does
+  not pull March back to the 28th.
+- **Changing the count reuses rows in place.** 12 months down to 6 rewrites six
+  and soft-deletes six; it does not delete twelve and mint twelve fresh ids
+  through the outbox. Only the surplus is retired, only the shortfall created.
+- **`external_id` is never copied onto a new part.** The bank's id identifies one
+  line on one statement; on twelve rows it would make a re-import skip real
+  spending. Only the row that was actually imported keeps it, which it does by
+  being the one reused.
+
+The count and the total are aggregated in `queries/transactions.ts` rather than
+stored, so they cannot drift from the rows; `split_index` *is* stored, because a
+part's position is a fact about the row. A group that has shrunk to one row is
+reported as no split at all — it reads and edits as an ordinary transaction, and
+the stale id is dropped on the next save.
+
+Two consequences worth knowing before changing this. The money leaves the month
+it actually left the account, which is the point but is also why account
+balances still come out right: `balancesByAccount` sums every part whatever its
+date, and the parts sum to the original. And the CSV export writes the parts as
+twelve independent rows, so a file that leaves and comes back is twelve
+transactions rather than one split — the money round-trips, the grouping does
+not. Fixing that means a new column, which `export/csv.ts` says is exactly what
+turns the export from a backup into a report; leave it.
+
 **Money is integer cents, everywhere.** Never floats, never a formatted string in
 the database. Format only via `src/format.ts`. The euro symbol *trails* the
 figure ("1,240 €"), including in the `Amount` component.
@@ -203,8 +248,22 @@ filter the count and empty months turn grey and unpickable. The split query
 stays unfiltered too, or selecting a category would redraw the ring as 100% of
 itself with no way to add a second; selection is drawn by dimming instead.
 
+**Trends loads one current snapshot.** `loadTrends` builds the 3M, 6M and 1Y
+views plus their adjacent period previews from one bounded set of source rows,
+and the screen switches between those precomputed spans locally. `endOffset`
+is the displayed period's final month relative to today (never positive).
+Swiping pages by the selected span; historical months are completed months,
+not an artificial "current" month. The displayed `from`/`to` window also drives
+the Spend hand-off. The bars, pace and split reads run through one
+`withExclusiveTransactionAsync` transaction handle so they all describe one WAL
+snapshot on native; web uses `withTransactionAsync` because Expo does not support
+the exclusive API there. Don't move those statements back to independent calls.
+
 **Spend scrolls itself.** A `SectionList` cannot nest in `App.tsx`'s shared
 `ScrollView`, so `SCROLLS[tab]` hands Spend the insets and gets out of the way.
+Its month stepper and picker stop at the current month even when a split purchase
+has materialised future rows; those rows still count in balances, but a future
+Spend page is not a valid browsing period.
 
 **The importer decides nothing twice.** `transactions.external_id` (migration v2)
 holds the bank's own id, and a row whose id is already present is skipped
@@ -244,9 +303,11 @@ makes re-importing an export idempotent. `datetime` is local ISO with the offset
 UTC date of the day before, and off-by-one dates in a budget app are worse than
 no export. Amounts are decimal euros in the file and cents everywhere else.
 
-**Merchant memory outranks the MCC table.** `src/import/rules.ts` resolves in the
-order: securities purchase → what the user has previously chosen for that
-merchant → a `category` column naming a category we have → MCC → review. The
+**Merchant memory outranks the MCC table.** A row whose type is
+`BENEFITS_SAVEBACK` is excluded first: the investment contribution is not
+spending. `src/import/rules.ts` resolves every other row in the order: securities
+purchase → what the user has previously chosen for that merchant → a `category`
+column naming a category we have → MCC → review. The
 category column sits *below* the memory deliberately: in a bank's file that
 column is the bank's guess, and a guess must not outrank a decision the user
 made. On a restore into an empty app the memory is empty, so it still wins there. A code is a guess about a business; the memory is a

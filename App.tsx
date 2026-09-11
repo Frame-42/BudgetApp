@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { DeviceEventEmitter, ScrollView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -47,6 +47,13 @@ function Phone() {
     loadSampleData,
   } = useBudget();
   const [tab, setTab] = useState(0);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('trends-replay-open', (kind) => {
+      setTab(3);
+      setTimeout(() => DeviceEventEmitter.emit('trends-replay-run', kind), 1800);
+    });
+    return () => sub.remove();
+  }, []);
   /* Spend's list is filtered and paged, so it keeps its own state and its own
      database subscription rather than riding the provider's snapshot. */
   const feed = useTransactionFeed();
@@ -127,9 +134,11 @@ function Phone() {
       <TrendsScreen
         key="trends"
         data={trends.data}
+        onChangePeriod={trends.setEndOffset}
         showHint={!data.monthPicked}
         categoryIds={trends.categoryIds}
         onToggleCategories={trends.toggleCategories}
+        onClearCategories={trends.clearCategories}
         onPickMonth={notePickedMonth}
         onSeeTransactions={seeTransactions}
       />

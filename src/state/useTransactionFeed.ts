@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { getDb } from '../db/client';
 import {
@@ -11,7 +12,7 @@ import {
   type TransactionFilter,
   type TransactionPage,
 } from '../queries/transactions';
-import { addMonths, startOfMonth } from '../time';
+import { addMonths, startOfMonth, stepMonthWithinBounds } from '../time';
 
 /**
  * What the list is scoped to. A month steps; a range handed over from Trends
@@ -139,6 +140,13 @@ export function useTransactionFeed(): TransactionFeed {
     };
   }, []);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setRevision((r) => r + 1);
+    });
+    return () => subscription.remove();
+  }, []);
+
   /* Any change to what is being matched puts the list back on its first page. */
   const rewind = () => setPages(1);
 
@@ -148,14 +156,17 @@ export function useTransactionFeed(): TransactionFeed {
   }, []);
 
   const stepMonth = useCallback((delta: number) => {
-    setPeriod((current) =>
-      current.kind === 'month' ? { kind: 'month', start: addMonths(current.start, delta) } : current,
-    );
+    if (period.kind !== 'month') return;
+    setPeriod((current) => {
+      if (current.kind !== 'month') return current;
+      const start = stepMonthWithinBounds(current.start, delta, earliest);
+      return start === current.start ? current : { kind: 'month', start };
+    });
     rewind();
-  }, []);
+  }, [earliest, period.kind]);
 
   const pickMonth = useCallback((next: number) => {
-    setPeriod({ kind: 'month', start: startOfMonth(next) });
+    setPeriod({ kind: 'month', start: Math.min(startOfMonth(next), startOfMonth(Date.now())) });
     rewind();
   }, []);
 

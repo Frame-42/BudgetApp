@@ -35,6 +35,10 @@ export type TransactionRow = SyncRow & {
   note: string | null;
   /** The bank's id when this row was imported; NULL when it was typed in. */
   external_id: string | null;
+  /** Shared by every part of a transaction spread over months; NULL when it isn't. */
+  split_id: string | null;
+  /** 0-based position within that split, oldest first; NULL outside one. */
+  split_index: number | null;
 };
 
 export type BudgetRow = SyncRow & {

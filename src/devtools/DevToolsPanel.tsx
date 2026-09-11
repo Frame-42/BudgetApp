@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { DeviceEventEmitter, Pressable, StyleSheet, View } from 'react-native';
 import { Card, Eyebrow, T } from '../components/primitives';
 import { color } from '../theme';
 
@@ -19,6 +19,9 @@ export function DevToolsPanel({
   onLoadSample: () => void;
 }) {
   const tools: Tool[] = [
+    { name: 'Replay slow Trends swipe', onPress: () => DeviceEventEmitter.emit('trends-replay-open', 'slow') },
+    { name: 'Replay fast Trends swipe', onPress: () => DeviceEventEmitter.emit('trends-replay-open', 'fast') },
+    { name: 'Replay chained Trends swipes', onPress: () => DeviceEventEmitter.emit('trends-replay-open', 'chain') },
     { name: 'Reset to first run', onPress: onReset },
     { name: 'Load sample data', onPress: onLoadSample },
   ];
