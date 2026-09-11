@@ -9,10 +9,19 @@ import { morph } from '../motion';
 import { tapDone, tapSelect, tapWarn } from '../haptics';
 import { amountLabel } from '../format';
 import { shortDate } from '../time';
-import { needsReview, readyCount, reviewGroups, type ImportPlan, type ImportRow } from '../import/plan';
+import {
+  keepSinceLastImport,
+  needsReview,
+  offersImportCutoff,
+  readyCount,
+  reviewGroups,
+  rowsBeforeLastImport,
+  type ImportPlan,
+  type ImportRow,
+} from '../import/plan';
 import { color, fg, radius, w } from '../theme';
 
-type Mode = 'pick' | 'preview' | 'review' | 'done';
+type Mode = 'pick' | 'cutoff' | 'preview' | 'review' | 'done';
 
 /**
  * Transaction import, one sheet for the whole flow.
@@ -81,13 +90,31 @@ export function ImportSheet({
       const next = await onPlan(text);
       morph();
       setPlan(next);
-      setMode('preview');
+      // Only worth asking when the file actually spans the last import — both
+      // some overlap to skip and something new past it. Otherwise the two
+      // choices below would import exactly the same rows.
+      setMode(offersImportCutoff(next) ? 'cutoff' : 'preview');
     } catch (problem) {
       tapWarn();
       setError(problem instanceof Error ? problem.message : 'That file could not be read.');
     } finally {
       setBusy(false);
     }
+  };
+
+  /* Both leave `mode` at 'preview' either way — the choice only decides which
+     rows got there already marked skipped and decided. */
+  const importEverything = () => {
+    tapSelect();
+    morph();
+    setMode('preview');
+  };
+
+  const importSinceLastTime = () => {
+    tapSelect();
+    morph();
+    setPlan((current) => (current ? keepSinceLastImport(current) : current));
+    setMode('preview');
   };
 
   const startReview = () => {
@@ -174,6 +201,39 @@ export function ImportSheet({
                 Choose a file
               </T>
             )}
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={onClose} style={styles.quiet} hitSlop={8}>
+            <T size={12.5} alpha={0.4}>
+              Cancel
+            </T>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {mode === 'cutoff' && plan ? (
+        <View style={{ gap: 12 }}>
+          <T size={12.5} lineHeight={17.5} alpha={0.7}>
+            This file reaches back before your last import, up to{' '}
+            {shortDate(plan.latestImportedAt as number)}. Bring in everything, or only what's
+            past that date?
+          </T>
+          <Pressable
+            accessibilityRole="button"
+            onPress={importEverything}
+            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+          >
+            <T size={14} style={{ color: color.textStrong }}>
+              Import everything
+            </T>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={importSinceLastTime}
+            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+          >
+            <T size={14} style={{ color: color.textStrong }}>
+              {`Just what's new · skip ${rowsBeforeLastImport(plan)}`}
+            </T>
           </Pressable>
           <Pressable accessibilityRole="button" onPress={onClose} style={styles.quiet} hitSlop={8}>
             <T size={12.5} alpha={0.4}>

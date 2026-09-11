@@ -7,6 +7,7 @@ import {
   editTransaction,
   getTransaction,
   listSplitParts,
+  type NewTransaction,
 } from '../repo/transactions';
 import { addMonthsKeepingDay } from '../time';
 
@@ -53,6 +54,34 @@ export function splitAmounts(totalCents: number, months: number): number[] {
   const base = Math.floor(abs / count);
   const remainder = abs - base * count;
   return Array.from({ length: count }, (_, i) => sign * (base + (i < remainder ? 1 : 0)));
+}
+
+/**
+ * A new transaction, spread over `months` from its own date on — what the Add
+ * screen writes, and what each occurrence of a recurring schedule books.
+ * `amount_cents` is the signed total; the parts follow every rule the edit path
+ * below does (remainder to the earliest parts, day of the month kept).
+ *
+ * Opens no transaction of its own: `db/recurring.ts` books an occurrence and
+ * advances its schedule as one write, and expo-sqlite's transactions don't nest.
+ * Callers wrap it.
+ */
+export async function insertSplit(
+  db: SQLiteDatabase,
+  { months: requested, ...entry }: NewTransaction & { months: number },
+): Promise<void> {
+  const months = clampMonths(requested);
+  const amounts = splitAmounts(entry.amount_cents, months);
+  const splitId = months > 1 ? newId() : null;
+  for (let i = 0; i < months; i++) {
+    await createTransaction(db, {
+      ...entry,
+      amount_cents: amounts[i],
+      occurred_at: addMonthsKeepingDay(entry.occurred_at, i),
+      split_id: splitId,
+      split_index: splitId ? i : null,
+    });
+  }
 }
 
 /**
@@ -124,6 +153,7 @@ export async function saveTransactionSplit(db: SQLiteDatabase, edit: SplitEdit):
         ...values,
         account_id: first.account_id,
         note: first.note,
+        recurring_id: first.recurring_id,
       });
     }
 

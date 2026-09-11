@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import type { Cadence } from '../db/types';
 import { dayLabel, startOfDay } from '../time';
 
 /**
@@ -28,6 +29,12 @@ export type TransactionItem = {
   income: boolean;
   /** Null unless this row is one month of a transaction spread over several. */
   split: ItemSplit | null;
+  /**
+   * The schedule this row was booked by, while it is still running. A stopped
+   * schedule reads as null: its occurrences stay, but there is nothing left to
+   * stop.
+   */
+  recurring: { id: string; cadence: Cadence } | null;
 };
 
 export type TransactionGroup = { key: string; title: string; items: TransactionItem[] };
@@ -116,15 +123,19 @@ export async function loadTransactionPage(
       split_count: number | null;
       split_total: number | null;
       split_start: number | null;
+      recurring_id: string | null;
+      recurring_cadence: Cadence | null;
     }>(
       /* The split join is a grouped subquery rather than three correlated
          SELECTs: it is one pass over the index, and rows outside a split miss
          it entirely (`split_id IS NULL` matches nothing) and come back null. */
       `SELECT t.id, t.merchant, t.amount_cents, t.occurred_at, t.category_id, c.name AS category,
               t.split_id, t.split_index,
-              s.n AS split_count, s.total AS split_total, s.start_at AS split_start
+              s.n AS split_count, s.total AS split_total, s.start_at AS split_start,
+              r.id AS recurring_id, r.cadence AS recurring_cadence
          FROM transactions t
          LEFT JOIN categories c ON c.id = t.category_id
+         LEFT JOIN recurring r ON r.id = t.recurring_id AND r.deleted_at IS NULL
          LEFT JOIN (SELECT split_id,
                            COUNT(*)          AS n,
                            SUM(amount_cents) AS total,
@@ -174,6 +185,10 @@ export async function loadTransactionPage(
               totalCents: row.split_total ?? row.amount_cents,
               startAt: row.split_start ?? row.occurred_at,
             }
+          : null,
+      recurring:
+        row.recurring_id && row.recurring_cadence
+          ? { id: row.recurring_id, cadence: row.recurring_cadence }
           : null,
     });
   }

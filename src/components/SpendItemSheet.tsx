@@ -3,7 +3,9 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { cardStyle, Eyebrow, FieldSurface, T, TextField } from './primitives';
 import { CategoryChips } from './CategoryChips';
 import { Keypad } from './Keypad';
+import { CADENCE_WORD } from './RepeatCard';
 import { Sheet } from './Sheet';
+import { SplitCard } from './SplitCard';
 import { morph } from '../motion';
 import { tapDone, tapSelect, tapWarn } from '../haptics';
 import {
@@ -13,109 +15,12 @@ import {
   parseAmountToCents,
   sanitizeMerchant,
 } from '../format';
-import { clampMonths, MAX_SPLIT_MONTHS, splitAmounts, type SplitEdit } from '../db/split';
+import type { SplitEdit } from '../db/split';
 import type { TransactionItem } from '../queries/transactions';
-import { addMonthsKeepingDay, MONTH_ABBR } from '../time';
-import { color, fg, radius, w } from '../theme';
+import { color, radius, w } from '../theme';
 
-/** How long an armed Delete waits for its second tap before standing down. */
+/** How long an armed action waits for its second tap before standing down. */
 const ARM_TIMEOUT_MS = 4000;
-
-/** 'SEP 2026' — the ends of a split's span. */
-const monthLabel = (ts: number) => {
-  const d = new Date(ts);
-  return `${MONTH_ABBR[d.getMonth()]} ${d.getFullYear()}`;
-};
-
-/** One end of the month stepper. The app's only two glyph buttons. */
-function Nudge({
-  glyph,
-  label,
-  enabled,
-  onPress,
-}: {
-  glyph: string;
-  label: string;
-  enabled: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !enabled }}
-      disabled={!enabled}
-      onPress={() => {
-        tapSelect();
-        onPress();
-      }}
-      style={({ pressed }) => [styles.nudge, pressed && styles.actionPressed]}
-    >
-      <T weight="light" size={19} lineHeight={22} style={{ color: fg(enabled ? 0.72 : 0.18) }}>
-        {glyph}
-      </T>
-    </Pressable>
-  );
-}
-
-/**
- * How many months the amount is spread over, and what that comes to.
- *
- * The preview runs through `splitAmounts`, the same function the write does, so
- * the figure shown here is the figure that lands in the first month — including
- * the extra cent an uneven division puts there.
- */
-function SplitCard({
-  months,
-  onChange,
-  totalCents,
-  startAt,
-}: {
-  months: number;
-  onChange: (months: number) => void;
-  /** Unsigned: the split is about reach, not direction. */
-  totalCents: number;
-  startAt: number;
-}) {
-  const step = (delta: number) => {
-    const next = clampMonths(months + delta);
-    if (next === months) return;
-    /* The caption appears and disappears at the 1/2 boundary; let the card grow
-       into it rather than snapping a line of text into existence. */
-    if (next === 1 || months === 1) morph();
-    onChange(next);
-  };
-
-  const perMonth = splitAmounts(totalCents, months)[0];
-
-  return (
-    <View style={[cardStyle(true), styles.splitCard]}>
-      <View style={styles.splitRow}>
-        <Eyebrow>Spread over</Eyebrow>
-        <View style={styles.stepper}>
-          <Nudge glyph="−" label="Fewer months" enabled={months > 1} onPress={() => step(-1)} />
-          <T size={13} tracking={-0.01} style={styles.monthCount}>
-            {months === 1 ? '1 month' : `${months} months`}
-          </T>
-          <Nudge
-            glyph="+"
-            label="More months"
-            enabled={months < MAX_SPLIT_MONTHS}
-            onPress={() => step(1)}
-          />
-        </View>
-      </View>
-
-      {months > 1 ? (
-        <Eyebrow size={10} tracking={0.06} alpha={0.36}>
-          {`${amountLabel(perMonth)} a month · ${monthLabel(startAt)} – ${monthLabel(
-            addMonthsKeepingDay(startAt, months - 1),
-          )}`}
-        </Eyebrow>
-      ) : null}
-    </View>
-  );
-}
 
 /**
  * What a held Spend row opens: the two actions, and — without a second modal —
@@ -125,6 +30,11 @@ function SplitCard({
  * the *whole* transaction in that case — the total, and how far it reaches — so
  * the amount here is the split's total rather than the part that was held. The
  * head still shows the part, which is what the user tapped.
+ *
+ * A row booked by a schedule that is still running gets a third action, to stop
+ * it. Edit and Delete stay about this one occurrence: last month's rent being
+ * wrong is not a reason to rewrite next month's, and a skipped occurrence is
+ * not a cancelled standing order.
  */
 export function SpendItemSheet({
   item,
@@ -132,15 +42,19 @@ export function SpendItemSheet({
   onClose,
   onSave,
   onDelete,
+  onStopRecurring,
 }: {
   item: TransactionItem | null;
   categories: { id: string; name: string }[];
   onClose: () => void;
   onSave: (input: SplitEdit) => void;
   onDelete: (target: { id: string; splitId: string | null }) => void;
+  onStopRecurring: (id: string) => void;
 }) {
   const [mode, setMode] = useState<'actions' | 'edit'>('actions');
-  const [armed, setArmed] = useState(false);
+  /* Which action is waiting for its second tap. One at a time: arming one
+     stands the other down, so a stray tap never lands on a stale confirmation. */
+  const [armed, setArmed] = useState<'delete' | 'stop' | null>(null);
   const [amount, setAmount] = useState('');
   const [months, setMonths] = useState(1);
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -151,7 +65,7 @@ export function SpendItemSheet({
   useEffect(() => {
     if (!item) return;
     setMode('actions');
-    setArmed(false);
+    setArmed(null);
     setAmount(centsToAmountInput(item.split?.totalCents ?? item.amountCents));
     setMonths(item.split?.count ?? 1);
     setCategoryId(item.categoryId);
@@ -160,7 +74,7 @@ export function SpendItemSheet({
 
   useEffect(() => {
     if (!armed) return;
-    disarm.current = setTimeout(() => setArmed(false), ARM_TIMEOUT_MS);
+    disarm.current = setTimeout(() => setArmed(null), ARM_TIMEOUT_MS);
     return () => {
       if (disarm.current) clearTimeout(disarm.current);
     };
@@ -169,23 +83,40 @@ export function SpendItemSheet({
   if (!item) return null;
 
   const split = item.split;
+  const recurring = item.recurring;
   const amountCents = parseAmountToCents(amount);
   const canSave = amountCents > 0;
   /* A split already reaches back to its first month; a plain row starts where
      it happened. Either way this is where a spread begins. */
   const startAt = split?.startAt ?? item.occurredAt;
 
-  const pressDelete = () => {
-    if (!armed) {
+  /** First tap arms, second tap acts. */
+  const confirm = (action: 'delete' | 'stop', run: () => void) => {
+    if (armed !== action) {
       tapWarn();
       morph();
-      setArmed(true);
+      setArmed(action);
       return;
     }
     tapDone();
-    onDelete({ id: item.id, splitId: split?.id ?? null });
+    run();
     onClose();
   };
+
+  const pressDelete = () =>
+    confirm('delete', () => onDelete({ id: item.id, splitId: split?.id ?? null }));
+
+  const pressStop = () => {
+    if (recurring) confirm('stop', () => onStopRecurring(recurring.id));
+  };
+
+  const detail = [
+    item.category,
+    recurring ? CADENCE_WORD[recurring.cadence] : null,
+    split ? `part ${split.index + 1} of ${split.count}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const save = () => {
     if (!canSave) return;
@@ -209,9 +140,7 @@ export function SpendItemSheet({
           <T size={16} tracking={-0.01} style={{ color: color.textStrong }} numberOfLines={1}>
             {item.merchant}
           </T>
-          <Eyebrow>
-            {split ? `${item.category} · part ${split.index + 1} of ${split.count}` : item.category}
-          </Eyebrow>
+          <Eyebrow>{detail}</Eyebrow>
         </View>
         <T size={15} tracking={-0.02} alpha={0.72} style={item.income ? { color: color.accentBright } : undefined}>
           {amountLabel(item.amountCents, { signed: item.income })}
@@ -225,7 +154,7 @@ export function SpendItemSheet({
             onPress={() => {
               tapSelect();
               morph();
-              setArmed(false);
+              setArmed(null);
               setMode('edit');
             }}
             style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
@@ -235,19 +164,42 @@ export function SpendItemSheet({
             </T>
           </Pressable>
 
+          {recurring ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityHint={
+                armed === 'stop' ? undefined : 'Asks you to confirm before stopping'
+              }
+              onPress={pressStop}
+              style={({ pressed }) => [
+                styles.action,
+                armed === 'stop' && styles.actionArmed,
+                pressed && styles.actionPressed,
+              ]}
+            >
+              {/* What stopping leaves behind is the question, so answer it here. */}
+              <T
+                size={14}
+                style={{ color: armed === 'stop' ? color.accentBright : color.textStrong }}
+              >
+                {armed === 'stop' ? 'Tap again to stop · past ones stay' : 'Stop repeating'}
+              </T>
+            </Pressable>
+          ) : null}
+
           <Pressable
             accessibilityRole="button"
-            accessibilityHint={armed ? undefined : 'Asks you to confirm before deleting'}
+            accessibilityHint={armed === 'delete' ? undefined : 'Asks you to confirm before deleting'}
             onPress={pressDelete}
             style={({ pressed }) => [
               styles.action,
-              armed && styles.actionArmed,
+              armed === 'delete' && styles.actionArmed,
               pressed && styles.actionPressed,
             ]}
           >
             {/* A part is never deleted alone, so say so before the second tap. */}
-            <T size={14} style={{ color: armed ? color.accentBright : color.textStrong }}>
-              {armed
+            <T size={14} style={{ color: armed === 'delete' ? color.accentBright : color.textStrong }}>
+              {armed === 'delete'
                 ? split
                   ? `Tap again to delete all ${split.count}`
                   : 'Tap again to delete'
@@ -353,18 +305,6 @@ const styles = StyleSheet.create({
     borderBottomColor: color.hairline,
   },
   nameCard: { paddingHorizontal: 16, paddingVertical: 12, gap: 6 },
-  splitCard: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
-  splitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  nudge: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  /* Fixed width, so stepping from 9 to 10 months doesn't shuffle the buttons. */
-  monthCount: { minWidth: 74, textAlign: 'center', color: color.textStrong },
   action: {
     height: 52,
     borderRadius: radius.key,

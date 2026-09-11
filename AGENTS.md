@@ -49,7 +49,7 @@ them — change `app.json` and let the next prebuild regenerate.
 | Path | Holds |
 |---|---|
 | `src/theme.ts` | Design tokens — surfaces, the two accent tints, radii, fonts |
-| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor), `SegmentedPill.tsx` (the two-state slide switch) |
+| `src/components/` | `primitives.tsx` (Card, HeroCard, T, Amount, Background…), `Charts.tsx`, `TabBar.tsx`, `Icons.tsx`, `BudgetAmountCard.tsx` + `CategoryLimits.tsx` (shared by onboarding and the budget editor), `SegmentedPill.tsx` (the two-state slide switch), `SplitCard.tsx` + `RepeatCard.tsx` (Add's advanced options; the split card is also the edit sheet's) |
 | `src/screens/` | One per tab, plus `OnboardingScreen` and `BudgetScreen` (a full-screen Modal editor); presentational, fed by props |
 | `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
 | `src/repo/` | Typed CRUD per table — the only place writes happen |
@@ -193,6 +193,34 @@ twelve independent rows, so a file that leaves and comes back is twelve
 transactions rather than one split — the money round-trips, the grouping does
 not. Fixing that means a new column, which `export/csv.ts` says is exactly what
 turns the export from a backup into a report; leave it.
+
+**A recurring expense is a schedule that books its own occurrences.** Add's
+"Advanced" pill reveals the split stepper and a Repeats card; picking a cadence
+makes the expense occurrence 0 of a `recurring` row (migration v4 added
+`cadence`, `anchor_at`, `split_months`, and `transactions.recurring_id`). Six
+rules:
+
+- **Occurrences are materialised, like split parts, but only once due.** A
+  schedule has no end, so nothing is written ahead of time; `next_due_at` is
+  the only trace of the next one, which is what Home's "Next out" reads.
+- **It rolls forward on its own.** `bookDueRecurring` runs before the
+  provider's first load and on every return to the foreground, and books every
+  missed occurrence on its own date. No "mark as paid": a standing order leaves
+  the account whether or not the app is opened. A module-level lock stops the
+  two triggers booking one occurrence twice.
+- **Every occurrence is measured from the anchor**, never from the previous one
+  (`occurrenceAt` in `time.ts`), so 31 Jan monthly gives 28 Feb and then 31 Mar.
+  Only the anchor and the next due date are stored; the count between them is
+  derived by `occurrenceIndex`. Pre-v4 rows have no anchor — `next_due_at`
+  stands in and is written back on the first advance.
+- **Each occurrence is spread by `split_months`** through `insertSplit`, and
+  every part carries the `recurring_id`.
+- **Edit and Delete act on one occurrence; "Stop repeating" ends the schedule.**
+  Stopping soft-deletes the `recurring` row and leaves every booked occurrence —
+  that money moved. A stopped schedule reads as `recurring: null` on the item.
+- **Closing "Advanced" resets both options.** An option still applying while
+  hidden would be written into the next expense unasked. The section reopens by
+  itself when the screen remounts onto options already set.
 
 **Money is integer cents, everywhere.** Never floats, never a formatted string in
 the database. Format only via `src/format.ts`. The euro symbol *trails* the

@@ -1,4 +1,4 @@
-import { stepMonthWithinBounds } from '../time';
+import { dueOccurrences, occurrenceAt, occurrenceIndex, stepMonthWithinBounds } from '../time';
 
 describe('stepMonthWithinBounds', () => {
   const june = new Date(2026, 5, 1).getTime();
@@ -22,5 +22,65 @@ describe('stepMonthWithinBounds', () => {
 
   it('does not step backward when there is no history', () => {
     expect(stepMonthWithinBounds(august, -1, null, september)).toBe(august);
+  });
+});
+
+describe('occurrenceAt', () => {
+  it('measures every month from the anchor, so a short month does not stick', () => {
+    const jan31 = new Date(2026, 0, 31, 9, 30).getTime();
+    expect(new Date(occurrenceAt(jan31, 'month', 1))).toEqual(new Date(2026, 1, 28, 9, 30));
+    expect(new Date(occurrenceAt(jan31, 'month', 2))).toEqual(new Date(2026, 2, 31, 9, 30));
+  });
+
+  it('clamps a leap day in the years without one', () => {
+    const leap = new Date(2028, 1, 29).getTime();
+    expect(new Date(occurrenceAt(leap, 'year', 1))).toEqual(new Date(2029, 1, 28));
+    expect(new Date(occurrenceAt(leap, 'year', 4))).toEqual(new Date(2032, 1, 29));
+  });
+
+  it('keeps the time of day across weeks', () => {
+    const monday = new Date(2026, 2, 23, 9, 0).getTime();
+    expect(new Date(occurrenceAt(monday, 'week', 2))).toEqual(new Date(2026, 3, 6, 9, 0));
+  });
+});
+
+describe('occurrenceIndex', () => {
+  it('inverts occurrenceAt for every cadence', () => {
+    const anchor = new Date(2026, 0, 31, 8, 15).getTime();
+    for (const cadence of ['week', 'month', 'year'] as const) {
+      for (const k of [0, 1, 5, 13, 60]) {
+        expect(occurrenceIndex(anchor, cadence, occurrenceAt(anchor, cadence, k))).toBe(k);
+      }
+    }
+  });
+});
+
+describe('dueOccurrences', () => {
+  const anchor = new Date(2026, 5, 15).getTime();
+
+  it('books nothing before the next date', () => {
+    const next = occurrenceAt(anchor, 'month', 1);
+    expect(dueOccurrences(anchor, 'month', next, next - 1)).toEqual({ due: [], next });
+  });
+
+  it('catches up every missed occurrence and points past them', () => {
+    const next = occurrenceAt(anchor, 'month', 1);
+    const at = new Date(2026, 8, 20).getTime();
+    expect(dueOccurrences(anchor, 'month', next, at)).toEqual({
+      due: [1, 2, 3].map((k) => occurrenceAt(anchor, 'month', k)),
+      next: occurrenceAt(anchor, 'month', 4),
+    });
+  });
+
+  it('counts an occurrence due at this very moment', () => {
+    const next = occurrenceAt(anchor, 'week', 1);
+    expect(dueOccurrences(anchor, 'week', next, next).due).toEqual([next]);
+  });
+
+  it('stops at the limit and leaves the rest due', () => {
+    const at = new Date(2030, 0, 1).getTime();
+    const { due, next } = dueOccurrences(anchor, 'week', anchor, at, 3);
+    expect(due).toHaveLength(3);
+    expect(next).toBe(occurrenceAt(anchor, 'week', 3));
   });
 });

@@ -1,5 +1,7 @@
 /** Date helpers. Everything is local time and milliseconds since the epoch. */
 
+import type { Cadence } from './db/types';
+
 export const startOfDay = (d: Date | number): number => {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -51,6 +53,70 @@ export function addMonthsKeepingDay(d: Date | number, n: number): number {
   target.setDate(Math.min(x.getDate(), lastDay));
   target.setHours(x.getHours(), x.getMinutes(), x.getSeconds(), x.getMilliseconds());
   return target.getTime();
+}
+
+/**
+ * The `k`th occurrence of a schedule, counted from its anchor (k = 0).
+ *
+ * Always from the anchor, never from the previous occurrence — the rule split
+ * parts follow too. Stepping month to month would let one short month clamp the
+ * 31st to the 28th and keep it there; measured from the anchor, 31 Jan gives
+ * 28 Feb and then 31 Mar. A week is seven calendar days rather than 604,800,000
+ * ms, so a payment at 09:00 stays at 09:00 across a clock change.
+ */
+export function occurrenceAt(anchor: number, cadence: Cadence, k: number): number {
+  if (cadence === 'week') {
+    const x = new Date(anchor);
+    x.setDate(x.getDate() + 7 * k);
+    return x.getTime();
+  }
+  return addMonthsKeepingDay(anchor, cadence === 'year' ? 12 * k : k);
+}
+
+/**
+ * Which occurrence `at` is — the inverse of `occurrenceAt`, for a date it
+ * produced. That is what lets a schedule store only its anchor and its next due
+ * date: the count between them is derived rather than kept in step by hand.
+ */
+export function occurrenceIndex(anchor: number, cadence: Cadence, at: number): number {
+  const a = new Date(anchor);
+  const b = new Date(at);
+  if (cadence === 'week') {
+    // Rounded, because a clock change makes one week an hour short or long.
+    return Math.round((startOfDay(b) - startOfDay(a)) / (7 * 86_400_000));
+  }
+  const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  return cadence === 'year' ? Math.floor(months / 12) : months;
+}
+
+/**
+ * A guard, not a pace: ten years of a weekly schedule. Only a corrupt anchor
+ * could ask for more in one pass, and a loop that never ends is worse than one
+ * that finishes on the next launch.
+ */
+export const MAX_CATCH_UP = 520;
+
+/**
+ * Every occurrence from `nextDue` up to and including `at`, and where the
+ * schedule stands afterwards. More than one when the app hasn't been opened for
+ * a while — each missed occurrence is still real money on its own date.
+ */
+export function dueOccurrences(
+  anchor: number,
+  cadence: Cadence,
+  nextDue: number,
+  at: number,
+  limit: number = MAX_CATCH_UP,
+): { due: number[]; next: number } {
+  const due: number[] = [];
+  let k = occurrenceIndex(anchor, cadence, nextDue);
+  let next = nextDue;
+  while (next <= at && due.length < limit) {
+    due.push(next);
+    k += 1;
+    next = occurrenceAt(anchor, cadence, k);
+  }
+  return { due, next };
 }
 
 export const daysInMonth = (d: Date | number): number => {

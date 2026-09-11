@@ -44,13 +44,41 @@ export function BudgetRing({ percent }: { percent: number }) {
  */
 const PLOT = { width: 320, top: 12, bottom: 100 };
 
+/**
+ * How tightly a Catmull-Rom spline hugs its points versus rounds the corner
+ * between them — the standard 1/6 factor, which is the least tension that
+ * still passes through every point exactly. Higher softens the curve further
+ * but starts to overshoot past the peak on a sharp day-to-day jump.
+ */
+const CURVE_TENSION = 6;
+
 function linePath(values: number[], days: number): string {
   if (values.length === 0) return '';
   const x = (i: number) => (days <= 1 ? 0 : (i / (days - 1)) * PLOT.width);
   const y = (v: number) => PLOT.bottom - v * (PLOT.bottom - PLOT.top);
-  return values
-    .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
-    .join(' ');
+  const points = values.map((v, i) => ({ x: x(i), y: y(v) }));
+
+  let d = `M${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  if (points.length < 3) {
+    return points.slice(1).reduce((path, p) => `${path} L${p.x.toFixed(1)} ${p.y.toFixed(1)}`, d);
+  }
+  // A day's straight segment reads as a kink once spend jumps unevenly; a
+  // Catmull-Rom spline through the same points instead eases into and out of
+  // each one, which is what a "pace so far" line should look like. The two
+  // control points per segment come from the point before and after it, so
+  // the curve still passes through every recorded day exactly.
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / CURVE_TENSION;
+    const c1y = p1.y + (p2.y - p0.y) / CURVE_TENSION;
+    const c2x = p2.x - (p3.x - p1.x) / CURVE_TENSION;
+    const c2y = p2.y - (p3.y - p1.y) / CURVE_TENSION;
+    d += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
 }
 
 export function PaceChart({ current, previous }: { current: number[]; previous: number[] }) {

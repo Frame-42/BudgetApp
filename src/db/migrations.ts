@@ -154,10 +154,34 @@ CREATE INDEX transactions_split_id ON transactions (split_id);
 `;
 
 /**
+ * A recurring row becomes a schedule the Add screen can create, rather than a
+ * date the demo sets once.
+ *
+ * `cadence` is how often it comes round; the default is what the one row V1 ever
+ * held (the demo's rent) always meant. `anchor_at` is the first occurrence, and
+ * every later one is measured from it rather than from its predecessor, so a
+ * schedule started on 31 Jan lands on 28 Feb and then 31 Mar instead of drifting
+ * to the 28th for good. NULL on rows from before this step: the code reads
+ * `next_due_at` as the anchor there and writes it back on the first advance.
+ * `split_months` is how far each occurrence is spread, as `db/split.ts` spreads
+ * one transaction.
+ *
+ * `transactions.recurring_id` is the occurrence's schedule — what lets the Spend
+ * sheet offer to stop it. Indexed, not UNIQUE, for the same reason `split_id` is.
+ */
+const V4 = `
+ALTER TABLE recurring ADD COLUMN cadence TEXT NOT NULL DEFAULT 'month';
+ALTER TABLE recurring ADD COLUMN anchor_at INTEGER;
+ALTER TABLE recurring ADD COLUMN split_months INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE transactions ADD COLUMN recurring_id TEXT;
+CREATE INDEX transactions_recurring_id ON transactions (recurring_id);
+`;
+
+/**
  * Ordered, append-only. To change the schema, add a step — never edit one that
  * has shipped, because devices in the field have already run it.
  */
-export const MIGRATIONS: string[] = [V1, V2, V3];
+export const MIGRATIONS: string[] = [V1, V2, V3, V4];
 
 /** Applies whatever hasn't run yet, tracked in PRAGMA user_version. */
 export async function migrate(db: SQLiteDatabase): Promise<void> {

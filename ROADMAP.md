@@ -105,16 +105,32 @@ archive — below), not its budgets; those live behind Monthly budget.
       real opening balance — which makes every derived balance a fiction. Needs
       an accounts list, create/edit, and an opening-balance field. (Balances stay
       *derived*; never store one.)
-- [ ] **Recurring.** The table, `listRecurring`/`nextDue`, and Home's "Next out"
-      tile all exist, but only `src/db/demo.ts` ever writes a row. Needs
-      create/edit/delete, and a rule for advancing `next_due_at` once a due date
-      passes (mark-as-paid, or roll forward automatically).
+- [ ] **Recurring.** Create is done — Add's "Advanced" section sets a weekly,
+      monthly or yearly cadence (spreadable over months, like any expense) — and
+      so is stop, from the Spend sheet of any occurrence. Due dates roll forward
+      automatically on launch and foreground (`src/db/recurring.ts`). Still
+      open: editing a schedule's amount or category (today an edit changes one
+      occurrence, so a raise means stop and re-add), and a list of schedules —
+      one whose occurrences were all deleted has no row left to stop it from.
 - [ ] **Income entry.** `AddScreen` records expenses only; the sign can be
       flipped just by editing an existing row in `SpendItemSheet`. Add an
       income/expense switch to Add, or state plainly that income arrives only via
       import.
 - [ ] **Import beyond CSV.** OFX/QIF, and a column-mapping step for exports whose
       headers aren't recognised — today an unfamiliar bank export simply fails.
+- [ ] **Share-sheet import** — pressing Share on an export inside a banking app
+      and having BudgetApp appear as a target, instead of saving the file first
+      and opening it here through `DocumentPicker`. `src/import/plan.ts` and
+      `ImportSheet.tsx` already separate "get the text" from "plan it", so the
+      hand-off is only a second way to reach `onPlan(text)`, opened straight to
+      `'preview'`. The real cost is native: an iOS Share Extension (its own app
+      target, an App Group to hand data to the main app, a paid developer
+      account for a real device) plus Android intent filters — most practically
+      `expo-share-intent`'s config plugin for both. That is a permanent exit
+      from Expo Go for this feature: Expo Go is a fixed binary Expo ships and
+      can never contain a third-party native module, no config changes that: it
+      would need `npm run ios` / `expo run:android`'s dev-client build to be how
+      the app is opened, by anyone testing it, from then on. Left alone for now.
 - [ ] **Search and filter reach.** Spend filters by category and text; date-range
       and amount-range filters are the obvious next two.
 

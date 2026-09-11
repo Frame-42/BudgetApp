@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { DeviceEventEmitter, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -24,6 +24,7 @@ import { DevToolsProvider } from './src/devtools/DevToolsContext';
 import { useTransactionFeed } from './src/state/useTransactionFeed';
 import { useTrendsView } from './src/state/useTrendsView';
 import { parseAmountToCents } from './src/format';
+import type { Cadence } from './src/db/types';
 import { GUTTER, color } from './src/theme';
 
 /* Spend virtualizes its own list, which cannot nest in the shared ScrollView;
@@ -37,6 +38,7 @@ function Phone() {
     addExpense,
     updateExpense,
     removeExpense,
+    stopRecurring,
     completeOnboarding,
     notePickedMonth,
     reset,
@@ -47,13 +49,6 @@ function Phone() {
     loadSampleData,
   } = useBudget();
   const [tab, setTab] = useState(0);
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('trends-replay-open', (kind) => {
-      setTab(3);
-      setTimeout(() => DeviceEventEmitter.emit('trends-replay-run', kind), 1800);
-    });
-    return () => sub.remove();
-  }, []);
   /* Spend's list is filtered and paged, so it keeps its own state and its own
      database subscription rather than riding the provider's snapshot. */
   const feed = useTransactionFeed();
@@ -64,6 +59,8 @@ function Phone() {
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [merchant, setMerchant] = useState('');
+  const [months, setMonths] = useState(1);
+  const [cadence, setCadence] = useState<Cadence | null>(null);
 
   useEffect(() => {
     if (!categoryId && data) setCategoryId(data.add.categories[0]?.id ?? null);
@@ -89,9 +86,17 @@ function Phone() {
   }
 
   const submit = async () => {
-    await addExpense({ amountCents: parseAmountToCents(amount), categoryId, merchant });
+    await addExpense({
+      amountCents: parseAmountToCents(amount),
+      categoryId,
+      merchant,
+      months,
+      cadence,
+    });
     setAmount('');
     setMerchant('');
+    setMonths(1);
+    setCadence(null);
     setTab(1);
   };
 
@@ -116,6 +121,7 @@ function Phone() {
       contentInset={contentInset}
       onSave={updateExpense}
       onDelete={removeExpense}
+      onStopRecurring={stopRecurring}
     />,
     <AddScreen
       key="add"
@@ -126,6 +132,10 @@ function Phone() {
       categories={data.add.categories}
       categoryId={categoryId}
       onCategoryChange={setCategoryId}
+      months={months}
+      onMonthsChange={setMonths}
+      cadence={cadence}
+      onCadenceChange={setCadence}
       leftToSpendCents={data.home.leftToSpendCents}
       daysRemaining={data.home.daysRemaining}
       onSubmit={submit}

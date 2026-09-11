@@ -15,6 +15,8 @@ export type NewTransaction = {
   /** Set only by `db/split.ts`: the group a spread-over-months part belongs to. */
   split_id?: string | null;
   split_index?: number | null;
+  /** Set only by `db/recurring.ts`: the schedule this row is an occurrence of. */
+  recurring_id?: string | null;
 };
 
 export const createTransaction = (db: SQLiteDatabase, values: NewTransaction) =>
@@ -23,6 +25,7 @@ export const createTransaction = (db: SQLiteDatabase, values: NewTransaction) =>
     external_id: null,
     split_id: null,
     split_index: null,
+    recurring_id: null,
     ...values,
   });
 

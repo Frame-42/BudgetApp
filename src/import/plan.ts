@@ -46,6 +46,13 @@ export type ImportPlan = {
   alreadyPresent: number;
   /** SAVEBACK investment contributions, which are not spending. */
   ignoredSaveback: number;
+  /**
+   * The latest date anything was actually imported to, or null on a first
+   * import. Read off the existing rows rather than kept in `sync_meta`: it is
+   * a fact about the transactions already in the database, and deriving it
+   * is what stops it drifting from them.
+   */
+  latestImportedAt: number | null;
 };
 
 /** Rows still needing a person: no category, or a possible duplicate. */
@@ -54,6 +61,49 @@ export const needsReview = (plan: ImportPlan): ImportRow[] =>
 
 export const readyCount = (plan: ImportPlan): number =>
   plan.rows.filter((row) => !row.skip && row.categoryId !== null && row.duplicateOf === null).length;
+
+/**
+ * How many rows in the plan land at or before the last import — what
+ * "just what's new" would drop. Rows are compared, not the file's raw dates,
+ * so an ignored or already-present row (never in `plan.rows` at all) doesn't
+ * count as overlap on its own.
+ */
+export function rowsBeforeLastImport(plan: ImportPlan): number {
+  const cutoff = plan.latestImportedAt;
+  return cutoff === null ? 0 : plan.rows.filter((row) => row.occurredAt <= cutoff).length;
+}
+
+/**
+ * Whether the file reaches both back to before the last import and forward
+ * past it — the only shape where "everything" and "just what's new" would
+ * actually produce different imports. A file that is entirely new, or
+ * entirely inside what was already imported, has nothing to choose between.
+ */
+export function offersImportCutoff(plan: ImportPlan): boolean {
+  const before = rowsBeforeLastImport(plan);
+  return before > 0 && before < plan.rows.length;
+}
+
+/**
+ * "Just what's new": every row at or before the last import is marked
+ * skipped and decided, so it never reaches review or the commit — the same
+ * two fields a reviewed row is left in, which is what keeps `commitImport`,
+ * `readyCount` and `needsReview` from needing to know this choice exists.
+ *
+ * This is a date cutoff, not a completeness check: a transaction the bank
+ * only added retroactively, or that a past export missed, is dropped along
+ * with everything else before the line. That trade — reviewing only what's
+ * new, at the cost of a rare backfilled row — is the whole point of offering
+ * the choice rather than always doing this.
+ */
+export function keepSinceLastImport(plan: ImportPlan): ImportPlan {
+  const cutoff = plan.latestImportedAt;
+  if (cutoff === null) return plan;
+  return {
+    ...plan,
+    rows: plan.rows.map((row) => (row.occurredAt <= cutoff ? { ...row, skip: true, decided: true } : row)),
+  };
+}
 
 /**
  * The review queue as *questions* rather than rows.
@@ -135,6 +185,11 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
   const byName = new Map(categories.map((category) => [category.name, category.id]));
   const imported = new Set(existing.map((row) => row.external_id).filter(Boolean) as string[]);
   const handEntered = existing.filter((row) => row.external_id === null);
+  const latestImportedAt = existing.reduce<number | null>(
+    (latest, row) =>
+      row.external_id !== null && (latest === null || row.occurred_at > latest) ? row.occurred_at : latest,
+    null,
+  );
 
   const rows: ImportRow[] = [];
   const seen = new Set<string>();
@@ -225,7 +280,7 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
     });
   }
 
-  return { rows, ignoredIncoming, alreadyPresent, ignoredSaveback };
+  return { rows, ignoredIncoming, alreadyPresent, ignoredSaveback, latestImportedAt };
 }
 
 /**
