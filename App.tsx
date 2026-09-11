@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,9 +23,39 @@ import { BudgetProvider, useBudget } from './src/state/BudgetProvider';
 import { DevToolsProvider } from './src/devtools/DevToolsContext';
 import { useTransactionFeed } from './src/state/useTransactionFeed';
 import { useTrendsView } from './src/state/useTrendsView';
-import { parseAmountToCents } from './src/format';
+import { centsToAmountInput, parseAmountToCents } from './src/format';
+import { partInMonth } from './src/db/split';
 import type { Cadence } from './src/db/types';
+import type { TransactionItem } from './src/queries/transactions';
+import { onDay, startOfDay } from './src/time';
 import { GUTTER, color } from './src/theme';
+
+/** Everything the Add screen's form holds. */
+type Entry = {
+  amount: string;
+  categoryId: string | null;
+  merchant: string;
+  /** The start of the day it happened; null for today. */
+  day: number | null;
+  months: number;
+  cadence: Cadence | null;
+};
+
+const BLANK: Entry = { amount: '', categoryId: null, merchant: '', day: null, months: 1, cadence: null };
+
+/** A transaction as the form shows it. The date is where the spread starts. */
+function entryFor(item: TransactionItem): Entry {
+  const startAt = item.split?.startAt ?? item.occurredAt;
+  const day = startOfDay(startAt);
+  return {
+    amount: centsToAmountInput(item.split?.totalCents ?? item.amountCents),
+    categoryId: item.categoryId,
+    merchant: item.merchant,
+    day: day === startOfDay(Date.now()) ? null : day,
+    months: item.split?.count ?? 1,
+    cadence: null,
+  };
+}
 
 /* Spend virtualizes its own list, which cannot nest in the shared ScrollView;
    it takes the insets as props and scrolls itself. */
@@ -56,16 +86,22 @@ function Phone() {
   const trends = useTrendsView();
 
   /* Entry state lives above the screens so it survives a trip to another tab. */
-  const [amount, setAmount] = useState('');
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [merchant, setMerchant] = useState('');
-  const [day, setDay] = useState<number | null>(null);
-  const [months, setMonths] = useState(1);
-  const [cadence, setCadence] = useState<Cadence | null>(null);
+  const [entry, setEntry] = useState<Entry>(BLANK);
+  const set =
+    <K extends keyof Entry>(key: K) =>
+    (value: Entry[K]) =>
+      setEntry((current) => ({ ...current, [key]: value }));
+  /* The transaction Spend's Edit handed over, while the Add screen is editing it. */
+  const [editing, setEditing] = useState<TransactionItem | null>(null);
+  /* The new expense that was half-typed when an edit began. It comes back when
+     the edit ends, so editing something never costs the draft. */
+  const draft = useRef<Entry | null>(null);
 
   useEffect(() => {
-    if (!categoryId && data) setCategoryId(data.add.categories[0]?.id ?? null);
-  }, [data, categoryId]);
+    // Not while editing: an uncategorised row or an income has no category on
+    // purpose, and filling one in would file it somewhere on save.
+    if (!editing && !entry.categoryId && data) set('categoryId')(data.add.categories[0]?.id ?? null);
+  }, [data, entry.categoryId, editing]);
 
   if (!data) {
     return (
@@ -86,20 +122,48 @@ function Phone() {
     );
   }
 
+  const startEdit = (item: TransactionItem) => {
+    if (!editing) draft.current = entry;
+    setEntry(entryFor(item));
+    setEditing(item);
+    setTab(2);
+  };
+
+  const endEdit = () => {
+    setEntry(draft.current ?? BLANK);
+    draft.current = null;
+    setEditing(null);
+  };
+
+  /* An edit belongs to the trip from Spend: leaving the Add tab abandons it,
+     rather than leaving a half-finished edit waiting behind the + button. */
+  const changeTab = (next: number) => {
+    if (editing && next !== 2) endEdit();
+    setTab(next);
+  };
+
   const submit = async () => {
-    await addExpense({
-      amountCents: parseAmountToCents(amount),
-      categoryId,
-      merchant,
-      day,
-      months,
-      cadence,
-    });
-    setAmount('');
-    setMerchant('');
-    setDay(null);
-    setMonths(1);
-    setCadence(null);
+    const amountCents = parseAmountToCents(entry.amount);
+    if (editing) {
+      if (amountCents <= 0) return;
+      const startAt = editing.split?.startAt ?? editing.occurredAt;
+      await updateExpense({
+        id: editing.id,
+        splitId: editing.split?.id ?? null,
+        amountCents,
+        income: editing.income,
+        months: entry.months,
+        categoryId: editing.income ? editing.categoryId : entry.categoryId,
+        merchant: entry.merchant,
+        // Keeps the time of day it was entered at, whichever day it lands on.
+        occurredAt: onDay(entry.day ?? startOfDay(Date.now()), startAt),
+      });
+      endEdit();
+      setTab(1);
+      return;
+    }
+    await addExpense({ ...entry, amountCents });
+    setEntry({ ...BLANK, categoryId: entry.categoryId });
     setTab(1);
   };
 
@@ -120,30 +184,52 @@ function Phone() {
     <SpendScreen
       key="spend"
       feed={feed}
-      categories={data.add.categories}
       contentInset={contentInset}
-      onSave={updateExpense}
+      onEdit={startEdit}
       onDelete={removeExpense}
       onStopRecurring={stopRecurring}
     />,
     <AddScreen
-      key="add"
-      amount={amount}
-      onAmountChange={setAmount}
-      merchant={merchant}
-      onMerchantChange={setMerchant}
+      /* A new key per mode, so moving between adding and editing starts a fresh form. */
+      key={editing ? `edit-${editing.id}` : 'add'}
+      amount={entry.amount}
+      onAmountChange={set('amount')}
+      merchant={entry.merchant}
+      onMerchantChange={set('merchant')}
       categories={data.add.categories}
-      categoryId={categoryId}
-      onCategoryChange={setCategoryId}
-      day={day}
-      onDayChange={setDay}
-      months={months}
-      onMonthsChange={setMonths}
-      cadence={cadence}
-      onCadenceChange={setCadence}
+      categoryId={entry.categoryId}
+      onCategoryChange={set('categoryId')}
+      day={entry.day}
+      onDayChange={set('day')}
+      months={entry.months}
+      onMonthsChange={set('months')}
+      cadence={entry.cadence}
+      onCadenceChange={set('cadence')}
+      defaults={editing ? entryFor(editing) : BLANK}
+      editing={
+        editing
+          ? {
+              income: editing.income,
+              replacesCents: editing.income
+                ? 0
+                : Math.abs(
+                    partInMonth(
+                      editing.split?.totalCents ?? editing.amountCents,
+                      editing.split?.count ?? 1,
+                      editing.split?.startAt ?? editing.occurredAt,
+                      Date.now(),
+                    ),
+                  ),
+            }
+          : null
+      }
       leftToSpendCents={data.home.leftToSpendCents}
       daysRemaining={data.home.daysRemaining}
       onSubmit={submit}
+      onCancel={() => {
+        endEdit();
+        setTab(1);
+      }}
     />,
     trends.data ? (
       <TrendsScreen
@@ -191,7 +277,7 @@ function Phone() {
       ) : (
         <View style={[styles.fill, styles.content]}>{screens[tab]}</View>
       )}
-      <TabBar active={tab} onChange={setTab} bottomInset={insets.bottom} />
+      <TabBar active={tab} onChange={changeTab} bottomInset={insets.bottom} />
     </Background>
   );
 }

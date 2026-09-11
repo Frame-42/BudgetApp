@@ -46,9 +46,9 @@ function Nudge({
 }
 
 /**
- * How many months the amount is spread over, and what that comes to. Shared by
- * the Add screen's advanced options and the Spend edit sheet, so a split is
- * entered and edited through the same control.
+ * How many months the amount is spread over, and what that comes to. One of the
+ * Add screen's advanced options — and Add is also where a transaction is
+ * edited, so a split is entered and changed through the same control.
  *
  * The preview runs through `splitAmounts`, the same function the write does, so
  * the figure shown here is the figure that lands in the first month — including

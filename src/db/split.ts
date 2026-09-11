@@ -9,7 +9,7 @@ import {
   listSplitParts,
   type NewTransaction,
 } from '../repo/transactions';
-import { addMonthsKeepingDay } from '../time';
+import { addMonthsKeepingDay, occurrenceIndex } from '../time';
 
 /**
  * How far a transaction may be spread. Two years covers the things people
@@ -18,7 +18,7 @@ import { addMonthsKeepingDay } from '../time';
  */
 export const MAX_SPLIT_MONTHS = 24;
 
-/** What the edit sheet sends: a magnitude, its direction, and its reach. */
+/** What an edit sends: a magnitude, its direction, its reach and its date. */
 export type SplitEdit = {
   /** The part the user held, which is the row the edit is anchored to. */
   id: string;
@@ -31,6 +31,8 @@ export type SplitEdit = {
   months: number;
   categoryId: string | null;
   merchant: string;
+  /** Where the first part now lands; omitted to leave the date where it was. */
+  occurredAt?: number;
 };
 
 /** Which rows a delete has to reach: a part never goes without its siblings. */
@@ -54,6 +56,16 @@ export function splitAmounts(totalCents: number, months: number): number[] {
   const base = Math.floor(abs / count);
   const remainder = abs - base * count;
   return Array.from({ length: count }, (_, i) => sign * (base + (i < remainder ? 1 : 0)));
+}
+
+/**
+ * The part of a spread that lands in `at`'s month: the first when it started
+ * this month, a later one when it started earlier, and 0 when it hasn't reached
+ * this month or has already run out — what Add counts against what is left.
+ */
+export function partInMonth(totalCents: number, months: number, startAt: number, at: number): number {
+  const index = occurrenceIndex(startAt, 'month', at);
+  return index < 0 ? 0 : (splitAmounts(totalCents, months)[index] ?? 0);
 }
 
 /**
@@ -121,9 +133,9 @@ export async function saveTransactionSplit(db: SQLiteDatabase, edit: SplitEdit):
      month drops it, so the row stops looking like a group of one. */
   const splitId = months > 1 ? (edit.splitId ?? newId()) : null;
 
-  /* The first part keeps the date the money actually moved; every later part is
-     the same day of a later month. */
-  const anchor = first.occurred_at;
+  /* The first part keeps the date the money actually moved — or the one the
+     edit moved it to — and every later part is the same day of a later month. */
+  const anchor = edit.occurredAt ?? first.occurred_at;
 
   await db.withTransactionAsync(async () => {
     for (let i = 0; i < months; i++) {
