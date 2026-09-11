@@ -68,6 +68,10 @@ export type MonthStat = {
 export type TrendsData = {
   /** How many months this view covers. */
   span: TrendSpan;
+  endOffset: number;
+  from: number;
+  to: number;
+  label: string;
   monthlyAverageCents: number;
   /** Rows across the whole span, for the hand-off when no month is picked. */
   matchCount: number;
@@ -90,7 +94,10 @@ export type TrendsData = {
 };
 
 /** Every span, ready to switch between without going back to the database. */
-export type TrendsBundle = Record<TrendSpan, TrendsData>;
+export type TrendsBundle = Record<TrendSpan, TrendsData & {
+  older: TrendsData;
+  newer: TrendsData | null;
+}>;
 
 type SplitRow = { id: string; name: string; alpha: number; total: number };
 
@@ -159,11 +166,12 @@ export function toSplit(rows: SplitRow[]): Share[] {
   return shares;
 }
 
-/** All three current Trends spans from one bounded database snapshot. */
+/** All three spans and their adjacent previews from one bounded database snapshot. */
 export async function loadTrends(
   db: SQLiteDatabase,
   at: number = Date.now(),
   categoryIds: string[] = [],
+  endOffset = 0,
 ): Promise<TrendsBundle> {
   /*
    * Every figure narrows to the chosen categories, but a month's *presence*
@@ -173,8 +181,10 @@ export async function loadTrends(
   */
   const chosen = categoryIds.length ? `category_id IN (${categoryIds.map(() => '?').join(', ')})` : '1';
   /** One month further back than the widest row shows, so its oldest bar has a pace line to sit over. */
-  const sourceStart = addMonths(at, -WIDEST);
-  const sourceEnd = startOfNextMonth(at);
+  endOffset = Math.min(0, Math.trunc(endOffset));
+  // Include both neighbours and their comparisons in the same snapshot.
+  const sourceStart = addMonths(at, endOffset - WIDEST * 2);
+  const sourceEnd = startOfNextMonth(addMonths(at, Math.min(0, endOffset + WIDEST)));
 
   let rows: {
     month: string;
@@ -265,14 +275,14 @@ export async function loadTrends(
     splitByMonth.set(row.month, [...(splitByMonth.get(row.month) ?? []), row]);
   }
 
-  const build = (viewSpan: TrendSpan): TrendsData => {
+  const build = (viewSpan: TrendSpan, offset: number): TrendsData => {
     const stamps = Array.from(
       { length: viewSpan },
-      (_, i) => addMonths(at, -(viewSpan - 1 - i)),
+      (_, i) => addMonths(at, offset - (viewSpan - 1 - i)),
     );
-    const shown = stamps.map((stamp, i) => {
+    const shown = stamps.map((stamp) => {
       const key = monthKey(stamp);
-      const active = i === viewSpan - 1;
+      const active = key === monthKey(at);
       return {
         key,
         label: MONTH_ABBR[new Date(stamp).getMonth()],
@@ -301,7 +311,7 @@ export async function loadTrends(
      * first month to finish takes over, and the running month goes back to being
      * read against finished ones rather than standing for them.
      */
-    const averageIsPartial = completed.length === 0;
+    const averageIsPartial = completed.length === 0 && shown.some((m) => m.active);
     const basisIndexes = averageIsPartial
       ? [viewSpan - 1]
       : shown.map((_, i) => i).filter((i) => !shown[i].active && shown[i].present);
@@ -357,7 +367,7 @@ export async function loadTrends(
 
       const averageSoFar = sameDay(averageSeries);
       /* An average made of this month alone has nothing to tell it about itself. */
-      const hasAverage = basisKeys.size > 1 || !basisKeys.has(month.key);
+      const hasAverage = basisKeys.size > 0 && (basisKeys.size > 1 || !basisKeys.has(month.key));
 
       return {
         ...month,
@@ -392,6 +402,10 @@ export async function loadTrends(
 
     return {
       span: viewSpan,
+      endOffset: offset,
+      from: stamps[0],
+      to: startOfNextMonth(stamps[stamps.length - 1]),
+      label: `${MONTH_ABBR[new Date(stamps[0]).getMonth()]} ${new Date(stamps[0]).getFullYear()} – ${MONTH_ABBR[new Date(stamps[stamps.length - 1]).getMonth()]} ${new Date(stamps[stamps.length - 1]).getFullYear()}`,
       monthlyAverageCents,
       matchCount: shown.reduce((sum, m) => sum + m.matchCount, 0),
       deltaPercent,
@@ -405,6 +419,10 @@ export async function loadTrends(
   };
 
   return Object.fromEntries(
-    TREND_SPANS.map((viewSpan) => [viewSpan, build(viewSpan)]),
+    TREND_SPANS.map((viewSpan) => [viewSpan, {
+      ...build(viewSpan, endOffset),
+      older: build(viewSpan, endOffset - viewSpan),
+      newer: endOffset < 0 ? build(viewSpan, Math.min(0, endOffset + viewSpan)) : null,
+    }]),
   ) as TrendsBundle;
 }

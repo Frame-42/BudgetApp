@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { getDb } from '../db/client';
 import { loadTrends, type TrendsBundle } from '../queries/trends';
@@ -9,6 +9,7 @@ export type TrendsView = {
   data: TrendsBundle | null;
   /** The categories the whole screen is narrowed to; empty means all of them. */
   categoryIds: string[];
+  setEndOffset: (offset: number) => void;
   toggleCategories: (ids: string[]) => void;
   clearCategories: () => void;
 };
@@ -22,20 +23,29 @@ export type TrendsView = {
 export function useTrendsView(): TrendsView {
   const [data, setData] = useState<TrendsBundle | null>(null);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [endOffset, setEndOffset] = useState(0);
   const [revision, setRevision] = useState(0);
 
   /* Only the newest request may write state, as in the transaction feed. */
   const generation = useRef(0);
+  const loadedOffset = useRef(0);
 
   useEffect(() => {
     const mine = ++generation.current;
     (async () => {
       const db = await getDb();
-      const next = await loadTrends(db, Date.now(), categoryIds);
+      const next = await loadTrends(db, Date.now(), categoryIds, endOffset);
       if (generation.current !== mine) return;
+      loadedOffset.current = endOffset;
       setData(next);
-    })();
-  }, [categoryIds, revision]);
+    })().catch(() => {
+      if (generation.current !== mine) return;
+      setEndOffset(loadedOffset.current);
+      setData((current) => current ? { ...current } : current);
+      Alert.alert('Could not load this period', 'Please try again.');
+    });
+    return () => { generation.current++; };
+  }, [categoryIds, revision, endOffset]);
 
   useEffect(() => {
     // One write fires several change events (the row, then its outbox entry),
@@ -74,5 +84,5 @@ export function useTrendsView(): TrendsView {
 
   const clearCategories = useCallback(() => setCategoryIds([]), []);
 
-  return { data, categoryIds, toggleCategories, clearCategories };
+  return { data, setEndOffset, categoryIds, toggleCategories, clearCategories };
 }

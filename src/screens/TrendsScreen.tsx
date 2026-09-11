@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
+import { TrendPeriodPager } from '../components/TrendPeriodPager';
 import { dimAlpha, LegendRule, PaceChart, SplitDonut } from '../components/Charts';
 import { BulbIcon, CaretIcon } from '../components/Icons';
 import { Amount, Card, Divider, Eyebrow, HeroCard, StatusDot, T } from '../components/primitives';
@@ -11,13 +12,10 @@ import {
   type TrendsData,
 } from '../queries/trends';
 import type { Period } from '../state/useTransactionFeed';
-import { addMonths, startOfNextMonth } from '../time';
 import { euroLabel, figure } from '../format';
 import { tapSelect } from '../haptics';
 import { color, fg, radius, w } from '../theme';
 
-/** The plot area the design's month bars are drawn against. */
-const BAR_PLOT_HEIGHT = 78;
 
 /** The tab bar's 280ms ease, so the card contents settle the way the app moves. */
 const EASE = {
@@ -38,8 +36,6 @@ const SPAN_LABEL: Record<TrendSpan, string> = {
 };
 const SPAN_CHIP: Record<TrendSpan, string> = { 3: '3M', 6: '6M', 12: '1Y' };
 
-/** Twelve bars only fit by tightening the row and cutting the labels to a letter. */
-const DENSE_FROM = 12;
 
 /** 04 — Trends: three, six or twelve months of shape, or one month of it. */
 export function TrendsScreen({
@@ -50,8 +46,10 @@ export function TrendsScreen({
   onClearCategories,
   onPickMonth,
   onSeeTransactions,
+  onChangePeriod,
 }: {
   data: TrendsBundle;
+  onChangePeriod: (offset: number) => void;
   /** The bars have never been used, so the screen still has to say they work. */
   showHint: boolean;
   /** What every figure here is narrowed to; empty means every category. */
@@ -66,7 +64,7 @@ export function TrendsScreen({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [compareChoice, setCompareChoice] = useState<Compare>('average');
   const data = bundle[span];
-  const dense = data.months.length >= DENSE_FROM;
+  const periodLabel = data.endOffset === 0 ? SPAN_LABEL[span] : data.label;
   /* The write below settles a beat later; this drops the hint with the animation. */
   const [justPicked, setJustPicked] = useState(false);
   /* Looked up rather than held, so a key that outlives its month falls back on its own. */
@@ -138,9 +136,9 @@ export function TrendsScreen({
         ? { kind: 'month', start: monthStartOf(selected.key) }
         : {
             kind: 'range',
-            from: addMonths(Date.now(), -(span - 1)),
-            to: startOfNextMonth(Date.now()),
-            label: SPAN_LABEL[span],
+            from: data.from,
+            to: data.to,
+            label: data.label,
           },
       categoryIds,
     });
@@ -196,7 +194,7 @@ export function TrendsScreen({
             style={styles.filterClear}
           >
             <Eyebrow size={10} numberOfLines={1} style={{ flexShrink: 1 }}>
-              {selectionTag ? `${SPAN_LABEL[span]} · ${selectionTag}` : SPAN_LABEL[span]}
+              {selectionTag ? `${periodLabel} · ${selectionTag}` : periodLabel}
             </Eyebrow>
             {narrowed ? (
               <Eyebrow size={8} alpha={0.3}>
@@ -231,15 +229,14 @@ export function TrendsScreen({
       </View>
 
       <HeroCard>
-        {/* Anywhere off a bar drops the pick — the card itself is the way back. */}
-        <Pressable
-          accessibilityRole={selected ? 'button' : undefined}
-          accessibilityLabel={selected ? `Back to all ${data.months.length} months` : undefined}
-          disabled={!selected}
-          onPress={clear}
-          style={styles.hero}
-        >
-          <View style={styles.heroTop}>
+        <View style={styles.hero}>
+          <Pressable
+            accessibilityRole={selected ? 'button' : undefined}
+            accessibilityLabel={selected ? `Back to all ${data.months.length} months` : undefined}
+            disabled={!selected}
+            onPress={clear}
+            style={styles.heroTop}
+          >
             <View style={{ gap: 8 }}>
               <Eyebrow alpha={0.36}>
                 {selected
@@ -271,57 +268,18 @@ export function TrendsScreen({
                 {Math.abs(data.deltaPercent)}% vs earlier
               </T>
             ) : null}
-          </View>
+          </Pressable>
           <View style={styles.bars}>
-            <View style={[styles.monthRow, dense && styles.monthRowDense]}>
-              {data.months.map((month) => {
-                /* Nothing is lit until a month is picked; then it is the only one. */
-                const on = month.key === selectedKey;
-                /* Held open in the row so the months stay in step, but with nothing to show. */
-                const missing = !month.present;
-                return (
-                  <Pressable
-                    key={month.key}
-                    accessibilityRole={missing ? undefined : 'button'}
-                    accessibilityState={{ selected: on }}
-                    accessibilityLabel={
-                      missing
-                        ? `${month.label}, nothing recorded`
-                        : `${month.label}, ${euroLabel(month.totalCents)}`
-                    }
-                    accessibilityHint={missing ? undefined : 'Shows this month on its own'}
-                    disabled={missing}
-                    onPress={() => pick(month.key)}
-                    /* The whole column is the target — a quiet month's bar is only 6px tall. */
-                    style={[styles.monthCol, dense && styles.monthColDense]}
-                  >
-                    <View
-                      style={[
-                        styles.monthBar,
-                        {
-                          height: Math.max(6, month.fraction * BAR_PLOT_HEIGHT),
-                          // With one month picked, the rest step further back than they rest at.
-                          backgroundColor: missing
-                            ? w(0.04)
-                            : on
-                              ? color.mark
-                              : selected
-                                ? w(0.08)
-                                : w(0.12),
-                        },
-                      ]}
-                    />
-                    <T
-                      weight="mono"
-                      size={dense ? 9 : 10}
-                      alpha={missing ? 0.16 : on ? 0.62 : selected ? 0.24 : 0.3}
-                    >
-                      {dense ? month.label.charAt(0) : month.label}
-                    </T>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <TrendPeriodPager
+              data={data}
+              selectedKey={selectedKey}
+              onPick={pick}
+              onChangePeriod={(offset) => {
+                tapSelect();
+                setSelectedKey(null);
+                onChangePeriod(offset);
+              }}
+            />
             {showHint && !justPicked && !selected ? (
               <View style={styles.hint}>
                 <BulbIcon color={fg(0.3)} size={11} />
@@ -331,7 +289,7 @@ export function TrendsScreen({
               </View>
             ) : null}
           </View>
-        </Pressable>
+        </View>
       </HeroCard>
 
       <Card style={styles.paceCard}>
@@ -552,11 +510,6 @@ const styles = StyleSheet.create({
   heroTop: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   bars: { gap: 10 },
   hint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  monthRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 9, height: 96 },
-  monthRowDense: { gap: 4 },
-  monthCol: { flex: 1, alignItems: 'center', gap: 9 },
-  monthColDense: { gap: 7 },
-  monthBar: { width: '100%', borderRadius: 5 },
   paceCard: { padding: 20, gap: 18 },
   paceHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   /* The caret carries the affordance on its own; the label stays an eyebrow like the rest. */

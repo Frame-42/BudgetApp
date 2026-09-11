@@ -249,8 +249,12 @@ stays unfiltered too, or selecting a category would redraw the ring as 100% of
 itself with no way to add a second; selection is drawn by dimming instead.
 
 **Trends loads one current snapshot.** `loadTrends` builds the 3M, 6M and 1Y
-views from one set of source rows, and the screen switches between those
-precomputed spans locally. The bars, pace and split reads run through one
+views plus their adjacent period previews from one bounded set of source rows,
+and the screen switches between those precomputed spans locally. `endOffset`
+is the displayed period's final month relative to today (never positive).
+Swiping pages by the selected span; historical months are completed months,
+not an artificial "current" month. The displayed `from`/`to` window also drives
+the Spend hand-off. The bars, pace and split reads run through one
 `withExclusiveTransactionAsync` transaction handle so they all describe one WAL
 snapshot on native; web uses `withTransactionAsync` because Expo does not support
 the exclusive API there. Don't move those statements back to independent calls.

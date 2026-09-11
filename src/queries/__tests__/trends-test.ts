@@ -77,7 +77,7 @@ describe('loadTrends', () => {
     );
     const db = { withExclusiveTransactionAsync } as unknown as SQLiteDatabase;
     const september = new Date(2026, 8, 10).getTime();
-    const sourceStart = new Date(2025, 8, 1).getTime();
+    const sourceStart = new Date(2024, 8, 1).getTime();
     const sourceEnd = new Date(2026, 9, 1).getTime();
 
     const trends = await loadTrends(db, september, ['groceries']);
@@ -103,5 +103,65 @@ describe('loadTrends', () => {
       ['Dining', 300],
       ['Groceries', 190],
     ]);
+  });
+});
+
+
+describe('Trends period paging', () => {
+  const at = new Date(2026, 8, 10).getTime();
+  function database() {
+    const txn = { getAllAsync: jest.fn(async (sql: string) => {
+      if (sql.includes('COUNT(*) AS entries')) return [
+        { month: '2026-02', entries: 1, matches: 1, total: 2800 },
+        { month: '2026-03', entries: 1, matches: 1, total: 3100 },
+      ];
+      if (sql.includes("CAST(strftime('%d'")) return [
+        { month: '2026-02', day: 28, total: 2800 },
+        { month: '2026-03', day: 31, total: 3100 },
+      ];
+      return [];
+    }) };
+    return { withExclusiveTransactionAsync: async (read: (db: unknown) => Promise<void>) => read(txn) } as unknown as SQLiteDatabase;
+  }
+
+  it.each([3, 6, 12] as const)('previews the preceding %s months without overlap', async (span) => {
+    const bundle = await loadTrends(database(), at);
+    const page = bundle[span];
+    expect(page.older.to).toBe(page.from);
+    expect(page.newer).toBeNull();
+    const previous = (await loadTrends(database(), at, [], -span))[span];
+    const { older, newer, ...current } = previous;
+    expect(current).toEqual(page.older);
+    expect(newer?.from).toBe(page.from);
+    expect(newer?.to).toBe(page.to);
+    expect(older.to).toBe(previous.from);
+  });
+
+  it('includes the entire last historical month in averages and pace', async () => {
+    const page = (await loadTrends(database(), at, [], -6))[6];
+    expect(page.months.map((m) => m.key)).toEqual([
+      '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03',
+    ]);
+    expect(page.months.every((m) => !m.active)).toBe(true);
+    expect(page.monthlyAverageCents).toBe(2950);
+    expect(page.averageMonths).toBe(2);
+    expect(page.months[5].pace.current).toHaveLength(31);
+    expect(page.months[5].totalCents).toBe(3100);
+    expect(page.label).toBe('OCT 2025 – MAR 2026');
+  });
+
+  it('keeps empty historical periods empty rather than treating them as this month', async () => {
+    const page = (await loadTrends(database(), at, [], -36))[6];
+    expect(page.averageIsPartial).toBe(false);
+    expect(page.averageMonths).toBe(0);
+    expect(page.monthlyAverageCents).toBe(0);
+    expect(page.averagePace).toEqual([]);
+    expect(page.months.every((m) => !m.present && !m.hasAverage)).toBe(true);
+  });
+
+  it('clamps newer previews after changing span to the current month', async () => {
+    const page = (await loadTrends(database(), at, [], -3))[12];
+    expect(page.newer?.endOffset).toBe(0);
+    expect(page.newer?.months[11].key).toBe('2026-09');
   });
 });

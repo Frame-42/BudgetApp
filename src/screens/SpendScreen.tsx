@@ -7,6 +7,7 @@ import { TransactionRow } from '../components/TransactionRow';
 import { SpendItemSheet } from '../components/SpendItemSheet';
 import { MonthPickerSheet } from '../components/MonthPickerSheet';
 import { tapSelect } from '../haptics';
+import { isHorizontalSwipe } from '../motion';
 import type { SplitEdit, SplitTarget } from '../db/split';
 import type { TransactionItem } from '../queries/transactions';
 import type { Period, TransactionFeed } from '../state/useTransactionFeed';
@@ -75,7 +76,7 @@ function SwipePeriod({ feed, onPress, swiping, onSwipingChange }: {
   latest.current = { period, canStepBack, canStepForward, width: pageWidth, stepMonth: feed.stepMonth };
   const pan = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponderCapture: (_, g) =>
-      latest.current.period.kind === 'month' && latest.current.width > 0 && Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      latest.current.period.kind === 'month' && latest.current.width > 0 && isHorizontalSwipe(g.dx, g.dy),
     onPanResponderGrant: () => {
       const delta = pendingMonth.current;
       pendingMonth.current = null;
