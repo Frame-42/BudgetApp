@@ -3,7 +3,7 @@ import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet,
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isHorizontalSwipe } from '../motion';
-import { GUTTER, color, radius, w } from '../theme';
+import { GUTTER, makeStyles, radius, useTheme } from '../theme';
 
 /** How far a finger travels before a touch is treated as a drag rather than a press. */
 const DRAG_SLOP = 10;
@@ -33,6 +33,8 @@ export function Sheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const styles = useStyles();
+  const { tint } = useTheme();
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(0)).current;
   const height = useRef(600);
@@ -86,7 +88,7 @@ export function Sheet({
     >
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.overlay}>
-          <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill}>
+          <BlurView intensity={22} tint={tint} style={StyleSheet.absoluteFill}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close"
@@ -159,7 +161,7 @@ export function Sheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   fill: { flex: 1 },
   /* The scrim is absolute, so the card is the only flow child — pin it low. */
   overlay: { flex: 1, justifyContent: 'flex-end' },
@@ -183,4 +185,4 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   body: { gap: 14, paddingBottom: 4 },
-});
+}));

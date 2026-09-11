@@ -9,6 +9,8 @@ import { exportFilename } from '../export/csv';
 import { shareCsv } from '../export/share';
 import { runOnboarding, type OnboardingInput } from '../db/onboarding';
 import { deleteRecurring } from '../repo/recurring';
+import { putSetting } from '../repo/settings';
+import type { Appearance } from '../theme';
 import {
   deleteTransactionSplit,
   insertSplit,
@@ -75,6 +77,8 @@ type BudgetContextValue = {
    * back to what it held.
    */
   saveBudget: (input: BudgetInput) => Promise<void>;
+  /** Light, dark, or whatever the phone is in. */
+  setAppearance: (appearance: Appearance) => Promise<void>;
   /** Reads an export and returns what it would do, without writing anything. */
   planImport: (text: string) => Promise<ImportPlan>;
   /** Writes a plan the user has finished reviewing; resolves with the count. */
@@ -226,6 +230,12 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     await saveMonthBudget(db, input);
   }, []);
 
+  /** No `load()`: settings is an ordinary table, so the change listener has it. */
+  const setAppearance = useCallback<BudgetContextValue['setAppearance']>(async (appearance) => {
+    const db = await getDb();
+    await putSetting(db, 'appearance', appearance.toUpperCase());
+  }, []);
+
   const planImport = useCallback(async (text: string) => {
     const db = await getDb();
     return buildImportPlan(db, text);
@@ -284,6 +294,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         notePickedMonth,
         reset,
         saveBudget,
+        setAppearance,
         planImport,
         runImport,
         exportCsv,

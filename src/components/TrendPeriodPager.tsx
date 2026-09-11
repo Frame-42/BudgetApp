@@ -3,7 +3,7 @@ import { Animated, Easing, PanResponder, Pressable, StyleSheet, View } from 'rea
 import type { TrendsBundle, TrendSpan } from '../queries/trends';
 import { euroLabel } from '../format';
 import { isHorizontalSwipe } from '../motion';
-import { color, w } from '../theme';
+import { makeStyles, useTheme } from '../theme';
 import { T } from './primitives';
 
 /** Quadratic ease-out starts at twice its average speed; vx is points per ms. */
@@ -47,6 +47,8 @@ export function TrendPeriodPager({ data, selectedKey, onPick, onChangePeriod }: 
   onPick: (key: string) => void;
   onChangePeriod: (offset: number) => void;
 }) {
+  const styles = useStyles();
+  const { color, w } = useTheme();
   const offset = useRef(new Animated.Value(0)).current;
   const position = useRef(0);
   const dragStart = useRef(0);
@@ -230,11 +232,11 @@ export function TrendPeriodPager({ data, selectedKey, onPick, onChangePeriod }: 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(() => ({
   // Keep the original baseline while admitting the tallest bar's 4pt overhang.
   viewport: { height: 100, marginTop: -4, overflow: 'hidden' },
   content: { paddingTop: 4, flexDirection: 'row' },
   row: { flexDirection: 'row', alignItems: 'flex-end', height: 96 },
   column: { flex: 1, alignItems: 'center', gap: 9 },
   bar: { width: '100%', borderRadius: 5 },
-});
+}));

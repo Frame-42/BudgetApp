@@ -14,7 +14,7 @@ import {
 import type { Period } from '../state/useTransactionFeed';
 import { euroLabel, figure } from '../format';
 import { tapSelect } from '../haptics';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 
 /** The tab bar's 280ms ease, so the card contents settle the way the app moves. */
@@ -60,6 +60,8 @@ export function TrendsScreen({
   /** Hands this exact scope to the Spend list and goes there. */
   onSeeTransactions: (scope: { period: Period; categoryIds: string[] }) => void;
 }) {
+  const styles = useStyles();
+  const { color, fg, mark } = useTheme();
   const [span, setSpan] = useState<TrendSpan>(6);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [compareChoice, setCompareChoice] = useState<Compare>('average');
@@ -370,7 +372,7 @@ export function TrendsScreen({
                       style={[
                         styles.swatch,
                         {
-                          backgroundColor: `rgba(233,235,242,${dim ? dimAlpha(share.alpha) : share.alpha})`,
+                          backgroundColor: mark(dim ? dimAlpha(share.alpha) : share.alpha),
                         },
                       ]}
                     />
@@ -477,7 +479,7 @@ function paceLine(
     : `${euroLabel(-delta)} heavier than ${against}.`;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ w }) => ({
   screen: { gap: 12 },
   header: {
     flexDirection: 'row',
@@ -537,4 +539,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 11,
   },
-});
+}));

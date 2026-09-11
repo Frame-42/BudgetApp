@@ -5,7 +5,7 @@ import { Eyebrow, T } from './primitives';
 import { CaretIcon } from './Icons';
 import { tapSelect } from '../haptics';
 import { MONTH_ABBR, monthKey, startOfMonth } from '../time';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** One year of months at a time: bounded content, however long the history is. */
 export function MonthPickerSheet({
@@ -21,6 +21,7 @@ export function MonthPickerSheet({
   onPick: (monthStart: number) => void;
   onClose: () => void;
 }) {
+  const styles = useStyles();
   const years = monthsWithData.map((key) => Number(key.slice(0, 4)));
   return (
     <Sheet visible onClose={onClose}>
@@ -61,6 +62,8 @@ export function MonthGrid({
   isEmpty?: (monthStart: number) => boolean;
   onPick: (monthStart: number) => void;
 }) {
+  const styles = useStyles();
+  const { color, fg } = useTheme();
   const now = new Date();
   const latestMonth = startOfMonth(now);
   const [year, setYear] = useState(() => new Date(monthStart ?? Date.now()).getFullYear());
@@ -140,6 +143,8 @@ function YearStep({
   enabled: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const { fg } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -156,7 +161,7 @@ function YearStep({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -189,4 +194,4 @@ const styles = StyleSheet.create({
   cellOff: { backgroundColor: w(0.05), borderWidth: 1, borderColor: w(0.07) },
   cellDead: { backgroundColor: w(0.02), borderWidth: 1, borderColor: w(0.04) },
   cancel: { height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
-});
+}));

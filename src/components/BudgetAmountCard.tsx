@@ -1,11 +1,11 @@
-import React, { useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Keyboard, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Amount, Eyebrow, HeroCard, T, TextField } from './primitives';
 import { tapSelect } from '../haptics';
 import { euroLabel, figure } from '../format';
 import { morph } from '../motion';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /* The canvas's slider: 1,500–5,000 in steps of 50, opening at 3,200 — which is
    also what the seven seeded category limits add up to. */
@@ -34,8 +34,29 @@ export const clamp = (value: number, low: number, high: number) =>
 /** Digits only, and never wider than the fields here are drawn for. */
 export const digits = (text: string) => text.replace(/[^0-9]/g, '').slice(0, 6);
 
+/*
+ * The pill and the rail move on motion.ts's 280ms ease, driven by hand. `morph`
+ * crossfades whatever mounts and unmounts, which is right for the figure; but
+ * the pill is one control changing shape, and `morph` never animated its width
+ * — as two views it ghosted the wide hint out underneath Done, as one it
+ * snapped. Animating `width` itself meant a layout pass per frame on the JS
+ * thread, which stuttered against the keyboard and `morph`'s own frames, so
+ * everything here is opacity and transforms on the native driver instead.
+ */
+const MOVE = { duration: 280, easing: Easing.inOut(Easing.ease), useNativeDriver: true };
+/* Putting the field away is quicker than opening it: there is nothing new to
+   read on the way back, and it runs alongside the keyboard going down. */
+const CLOSE_MS = 200;
+
+/* The pill's horizontal padding in each state, plus its 1px border either side. */
+const HINT_INSET = 15 * 2 + 2;
+const DONE_INSET = 22 * 2 + 2;
+const PILL_HEIGHT = 34;
+const CAP = PILL_HEIGHT / 2;
+
 /** Marks the "type it in" escape as an action rather than a value. */
 function Pencil() {
+  const { fg } = useTheme();
   return (
     <Svg width={12} height={12} viewBox="0 0 14 14" fill="none">
       <Path
@@ -46,6 +67,27 @@ function Pencil() {
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+function HintLabel() {
+  const styles = useStyles();
+  return (
+    <View style={styles.hintLabel}>
+      <Pencil />
+      <T size={12} alpha={0.62} numberOfLines={1}>
+        Different budget? Type it in
+      </T>
+    </View>
+  );
+}
+
+function DoneLabel() {
+  const { color } = useTheme();
+  return (
+    <T weight="medium" size={12.5} numberOfLines={1} style={{ color: color.ink }}>
+      Done
+    </T>
   );
 }
 
@@ -68,18 +110,71 @@ export function BudgetAmountCard({
   onChange: (cents: number) => void;
   label?: string;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   const [typing, setTyping] = useState(false);
+  /* Mirrors `typing` synchronously. Done's tap closes the field, and the field
+     then blurs as it unmounts and asks to close again; a second `morph` would
+     sit armed and slow-animate the next layout it met — the screen settling as
+     the keyboard went down, which is what made closing crawl. */
+  const open = useRef(false);
   const [draft, setDraft] = useState('');
   const [trackWidth, setTrackWidth] = useState(0);
   const lastTick = useRef(0);
+  /* 0 is the hint, 1 is typing. The pill's width, both its faces and labels,
+     and the rail's dimming all hang off this one value, so they cannot drift. */
+  const progress = useRef(new Animated.Value(0)).current;
+  /* Each label's natural width, measured off-screen once. Until both are known
+     the pill has no width to animate between, so it waits a frame unseen. */
+  const [hintWidth, setHintWidth] = useState(0);
+  const [doneWidth, setDoneWidth] = useState(0);
+  const measured = hintWidth > 0 && doneWidth > 0;
+  const hintPill = hintWidth + HINT_INSET;
+  const donePill = doneWidth + DONE_INSET;
+  /* How far each end travels inward, and what the straight middle scales to. */
+  const inset = (hintPill - donePill) / 2;
+  const middleScale = (donePill - 2 * CAP) / Math.max(1, hintPill - 2 * CAP);
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      ...MOVE,
+      toValue: typing ? 1 : 0,
+      duration: typing ? MOVE.duration : CLOSE_MS,
+    }).start();
+  }, [typing, progress]);
+
+  const along = (outputRange: number[], inputRange = [0, 1]) =>
+    progress.interpolate({ inputRange, outputRange, extrapolate: 'clamp' });
+  /* The outline gives way to the fill early, so the shrink reads on the fill.
+     The labels hand over rather than overlap: the hint's is gone before
+     Done's begins. */
+  const outlineOpacity = along([1, 0], [0, 0.4]);
+  const fillOpacity = along([0, 1], [0, 0.4]);
+  const hintLabelOpacity = along([1, 0], [0, 0.35]);
+  const doneLabelOpacity = along([0, 1], [0.5, 1]);
 
   const fraction = clamp((valueCents - MIN_CENTS) / (MAX_CENTS - MIN_CENTS), 0, 1);
 
   const openTyping = () => {
+    if (open.current) return;
+    open.current = true;
     tapSelect();
     morph();
     setDraft(String(Math.round(valueCents / 100)));
     setTyping(true);
+  };
+
+  const closeTyping = () => {
+    if (!open.current) return;
+    open.current = false;
+    /* Now, not when the field unmounts. Both screens let taps through to Done
+       with the keyboard up, so the keyboard only fell once the field was gone
+       — and `morph` keeps an outgoing view, still focused, on screen for its
+       whole fade. The keyboard then followed the animation instead of joining
+       it. Dismissing first sends them down together. */
+    Keyboard.dismiss();
+    morph(CLOSE_MS);
+    setTyping(false);
   };
 
   const type = (text: string) => {
@@ -116,8 +211,8 @@ export function BudgetAmountCard({
             keyboardType="number-pad"
             autoFocus
             selectTextOnFocus
-            onBlur={() => setTyping(false)}
-            onSubmitEditing={() => setTyping(false)}
+            onBlur={closeTyping}
+            onSubmitEditing={closeTyping}
             accessibilityLabel="Monthly budget in euros"
             placeholder="0"
             weight="light"
@@ -142,8 +237,8 @@ export function BudgetAmountCard({
         </Pressable>
       )}
 
-      <View
-        style={[styles.sliderBlock, typing && styles.sliderIdle]}
+      <Animated.View
+        style={[styles.sliderBlock, { opacity: along([1, 0.35]) }]}
         /* A drag while the field is open would fight the draft figure. */
         pointerEvents={typing ? 'none' : 'auto'}
       >
@@ -174,62 +269,105 @@ export function BudgetAmountCard({
             {euroLabel(MAX_CENTS)}
           </T>
         </View>
-      </View>
+      </Animated.View>
 
-      {typing ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setTyping(false)}
-          style={({ pressed }) => [styles.typeDone, pressed && { opacity: 0.85 }]}
-        >
-          <T weight="medium" size={12.5} style={{ color: color.ink }}>
-            Done
-          </T>
-        </Pressable>
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Type a different monthly budget"
-          onPress={openTyping}
-          hitSlop={10}
-          style={({ pressed }) => [styles.typeHint, pressed && { opacity: 0.7 }]}
-        >
-          <Pencil />
-          <T size={12} alpha={0.62}>
-            Different budget? Type it in
-          </T>
-        </Pressable>
-      )}
+      {/* One pill that changes shape: it shrinks from the hint to Done as the
+          dashed outline gives way to the fill and the labels hand over. The
+          frame keeps the hint's width throughout — only what is drawn inside
+          it moves — so nothing is laid out again frame by frame. The fill is
+          two round ends that slide inward and a straight middle that scales,
+          which shrinks it without squashing the ends into ellipses. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={typing ? 'Done' : 'Type a different monthly budget'}
+        onPress={typing ? closeTyping : openTyping}
+        hitSlop={10}
+        style={({ pressed }) => pressed && { opacity: typing ? 0.85 : 0.7 }}
+      >
+        <View style={[styles.pill, measured ? { width: hintPill } : { opacity: 0 }]}>
+          <Animated.View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.hintFace,
+              {
+                opacity: outlineOpacity,
+                /* Gone before the squash would show; it only has to start the shrink. */
+                transform: [{ scaleX: along([1, donePill / Math.max(1, hintPill)]) }],
+              },
+            ]}
+          />
+          {/* Grouped so the overlapping pieces fade as one shape, not three. */}
+          <Animated.View
+            needsOffscreenAlphaCompositing
+            style={[StyleSheet.absoluteFill, { opacity: fillOpacity }]}
+          >
+            <Animated.View
+              style={[
+                styles.fillMiddle,
+                { left: CAP, right: CAP, transform: [{ scaleX: along([1, middleScale]) }] },
+              ]}
+            />
+            <Animated.View
+              style={[styles.fillCap, { left: 0, transform: [{ translateX: along([0, inset]) }] }]}
+            />
+            <Animated.View
+              style={[styles.fillCap, { right: 0, transform: [{ translateX: along([0, -inset]) }] }]}
+            />
+          </Animated.View>
+          <Animated.View style={[styles.label, { width: hintWidth, opacity: hintLabelOpacity }]}>
+            <HintLabel />
+          </Animated.View>
+          <Animated.View style={[styles.label, { width: doneWidth, opacity: doneLabelOpacity }]}>
+            <DoneLabel />
+          </Animated.View>
+        </View>
+      </Pressable>
+
+      {/* The labels at their natural width, where nothing narrows them. */}
+      <View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={styles.measure}
+      >
+        <View onLayout={(e) => setHintWidth(Math.ceil(e.nativeEvent.layout.width))}>
+          <HintLabel />
+        </View>
+        <View onLayout={(e) => setDoneWidth(Math.ceil(e.nativeEvent.layout.width))}>
+          <DoneLabel />
+        </View>
+      </View>
     </HeroCard>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   budgetCard: { paddingVertical: 26, paddingHorizontal: 24, gap: 20, alignItems: 'center' },
   typeRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   typeInput: { minWidth: 130, textAlign: 'center', color: color.textBright },
-  typeDone: {
-    height: 34,
-    paddingHorizontal: 22,
-    borderRadius: radius.pill,
-    backgroundColor: color.textStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  pill: { height: PILL_HEIGHT, alignItems: 'center', justifyContent: 'center' },
   /* Dashed, like the "More" chip: unfilled reads as a control rather than a value. */
-  typeHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    height: 34,
-    paddingHorizontal: 15,
+  hintFace: {
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: w(0.16),
     borderStyle: 'dashed',
   },
+  fillMiddle: { position: 'absolute', top: 0, bottom: 0, backgroundColor: color.textStrong },
+  fillCap: {
+    position: 'absolute',
+    top: 0,
+    width: PILL_HEIGHT,
+    height: PILL_HEIGHT,
+    borderRadius: CAP,
+    backgroundColor: color.textStrong,
+  },
+  /* Absolute, so both sit centred on the pill at once; flex centring does that
+     for an absolute child with no insets. */
+  label: { position: 'absolute', alignItems: 'center' },
+  measure: { position: 'absolute', top: 0, left: 0, opacity: 0, alignItems: 'flex-start' },
+  hintLabel: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   sliderBlock: { width: '100%', gap: 12 },
-  sliderIdle: { opacity: 0.35 },
   /* Taller than the rail it draws: 3px of track is not a thumb-sized target. */
   sliderRow: { height: 34, justifyContent: 'center' },
   track: { width: '100%', height: 3, borderRadius: 2, backgroundColor: w(0.09) },
@@ -247,4 +385,4 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between' },
-});
+}));

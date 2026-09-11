@@ -3,6 +3,7 @@ import { createAccount } from '../repo/accounts';
 import { createCategory } from '../repo/categories';
 import { updateRow } from '../repo/crud';
 import { putSetting } from '../repo/settings';
+import { DEFAULT_APPEARANCE } from '../theme';
 
 /**
  * What a brand-new install starts with: the categories to spend against, and the
@@ -74,7 +75,7 @@ export async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
 
     // Preferences the app reads but onboarding never asks about.
     await putSetting(db, 'weekly_recap', 'SUN');
-    await putSetting(db, 'appearance', 'DARK');
+    await putSetting(db, 'appearance', DEFAULT_APPEARANCE.toUpperCase());
     await putSetting(db, 'currency', 'EUR');
   });
 }

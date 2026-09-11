@@ -5,16 +5,23 @@ import { Amount, Card, Divider, Eyebrow, HeroCard, T } from '../components/primi
 import { ImportSheet } from '../components/ImportSheet';
 import { BudgetScreen, type BudgetDraft } from './BudgetScreen';
 import type { ImportPlan } from '../import/plan';
-import { ExportIcon, ImportIcon } from '../components/Icons';
+import { CaretIcon, ExportIcon, ImportIcon } from '../components/Icons';
 import { tapSelect, tapWarn } from '../haptics';
 import type { YouData, YouSettingKey } from '../queries/you';
 import { figure } from '../format';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme, type Appearance } from '../theme';
 import { useDevTools } from '../devtools/DevToolsContext';
 import { DevToolsPanel } from '../devtools/DevToolsPanel';
 
-/** A settings row; `onPress` is what makes it tappable. */
+/** A settings row; `onPress` is what makes it tappable, and gives it a chevron. */
 type Row = { name: string; value: string; onPress?: () => void };
+
+/** Appearance steps through its three values in place; there is nothing to open. */
+const NEXT_APPEARANCE: Record<Appearance, Appearance> = {
+  system: 'dark',
+  dark: 'light',
+  light: 'system',
+};
 
 /** 05 — You: accounts and settings. */
 export function YouScreen({
@@ -24,6 +31,7 @@ export function YouScreen({
   onRunImport,
   onExport,
   onSaveBudget,
+  onAppearanceChange,
   onReset,
   onLoadSample,
 }: {
@@ -33,9 +41,12 @@ export function YouScreen({
   onRunImport: (plan: ImportPlan) => Promise<number>;
   onExport: () => Promise<number>;
   onSaveBudget: (draft: BudgetDraft) => Promise<void>;
+  onAppearanceChange: (appearance: Appearance) => void;
   onReset: () => void;
   onLoadSample: () => void;
 }) {
+  const styles = useStyles();
+  const { w, fg } = useTheme();
   const [importOpen, setImportOpen] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   /* The tile's own subtitle is the whole of the export UI. There is no sheet
@@ -49,11 +60,16 @@ export function YouScreen({
      cannot quietly detach its editor. The budget row opens the whole budget —
      the overall figure and a limit per category on one page — since the two are
      one decision and splitting them across two screens made the total invisible
-     from wherever you were editing. The rest are still read-only (ROADMAP P1). */
+     from wherever you were editing. Appearance cycles on each tap; the rest are
+     still read-only (ROADMAP P1). */
   const editors: Partial<Record<YouSettingKey, () => void>> = {
     budget: () => {
       tapSelect();
       setBudgetOpen(true);
+    },
+    appearance: () => {
+      tapSelect();
+      onAppearanceChange(NEXT_APPEARANCE[data.appearance]);
     },
   };
 
@@ -163,13 +179,27 @@ export function YouScreen({
               <T size={13.5} alpha={0.86}>
                 {setting.name}
               </T>
-              <T weight="mono" size={12.5} alpha={0.4}>
-                {setting.value}
-              </T>
+              <View style={styles.settingValue}>
+                <T weight="mono" size={12.5} alpha={0.4}>
+                  {setting.value}
+                </T>
+                {/* The app's one caret, turned to say "this goes somewhere". */}
+                {setting.onPress ? (
+                  <View style={{ transform: [{ rotate: '-90deg' }] }}>
+                    <CaretIcon color={fg(0.4)} size={13} />
+                  </View>
+                ) : null}
+              </View>
             </View>
           );
           return setting.onPress ? (
-            <Pressable key={setting.name} onPress={setting.onPress} accessibilityRole="button">
+            <Pressable
+              key={setting.name}
+              onPress={setting.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={`${setting.name}, ${setting.value}`}
+              style={({ pressed }) => pressed && { opacity: 0.6 }}
+            >
               {row}
             </Pressable>
           ) : (
@@ -250,6 +280,8 @@ function ActionTile({
   /** Colours the status line, for the one case where it is reporting a failure. */
   alert?: boolean;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -277,7 +309,7 @@ function ActionTile({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   screen: { gap: 12 },
   header: {
     flexDirection: 'row',
@@ -306,6 +338,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 16,
   },
+  settingValue: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   settingBorder: { borderBottomWidth: 1, borderBottomColor: color.hairline },
   actionTile: {
     flexDirection: 'row',
@@ -325,4 +358,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

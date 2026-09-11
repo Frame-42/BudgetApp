@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { T } from './primitives';
 import { tapSelect } from '../haptics';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 const KEY_ROWS = [
   ['1', '2', '3'],
@@ -24,6 +24,8 @@ export function pressKey(current: string, key: string): string {
 
 /** The amount keypad, shared by the Add screen and the edit sheet. */
 export function Keypad({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const styles = useStyles();
+  const { color, fg } = useTheme();
   return (
     <View style={styles.keypad}>
       {KEY_ROWS.map((row, r) => (
@@ -68,7 +70,7 @@ export function Keypad({ value, onChange }: { value: string; onChange: (next: st
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ w }) => ({
   keypad: { gap: 8 },
   keyRow: { flexDirection: 'row', gap: 8 },
   key: {
@@ -81,4 +83,4 @@ const styles = StyleSheet.create({
   keySolid: { backgroundColor: w(0.045), borderWidth: 1, borderColor: w(0.055) },
   keyQuiet: { backgroundColor: w(0.03) },
   keyPressed: { backgroundColor: w(0.12) },
-});
+}));

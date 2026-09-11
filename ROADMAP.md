@@ -54,10 +54,10 @@ every setting, budget and category. This outranks every feature below.
 
 ## P1 — the settings screen is read-only
 
-The budget — overall and per category — is now editable. Categories, Weekly
-recap and Appearance are still read-only, captured during onboarding and
+The budget — overall and per category — and Appearance are now editable.
+Categories and Weekly recap are still read-only, captured during onboarding and
 unchangeable after. Each row in `loadYou` carries a `key` discriminant and
-`YouScreen`'s `editors` map attaches an editor to it, so the remaining three are
+`YouScreen`'s `editors` map attaches an editor to it, so the remaining two are
 a screen each rather than any plumbing.
 
 Note the Categories row still means the category *list* (add, rename, reorder,
@@ -92,9 +92,8 @@ archive — below), not its budgets; those live behind Monthly budget.
       archived filter so old spending keeps its label).
 - [ ] **Weekly recap**: the preference is stored and nothing reads it. Either
       build the recap (see P3) or stop asking for it in onboarding.
-- [ ] **Appearance**: the row says `DARK` and only dark exists. Either implement
-      a light palette in `src/theme.ts` or drop the row. A half-honest setting is
-      worse than none.
+- [x] **Appearance**: System (the default), Dark and Light — tapping the row
+      steps SYS → DARK → LIGHT. The light palette is pearl, not white.
 - [ ] **"Sign out" is a dead `Card`** — not even a `Pressable`. Remove it until
       there are accounts, or make it the entry point to P4.
 

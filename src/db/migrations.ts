@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { DEFAULT_APPEARANCE } from '../theme';
 
 /**
  * Tables that will eventually sync to an account. They all share the same four
@@ -178,10 +179,26 @@ CREATE INDEX transactions_recurring_id ON transactions (recurring_id);
 `;
 
 /**
+ * Appearance becomes a real choice, and the seed's value becomes the default
+ * (`DEFAULT_APPEARANCE`: the phone's scheme, or dark in a dev build). Until now
+ * the row was read-only, so every stored 'DARK' is the seed's rather than a
+ * decision anyone made — which is what makes resetting it safe. Stamped like any
+ * other write, so sync sees a newer row. In a dev build the default *is* dark,
+ * so the statement matches nothing.
+ */
+const V5 = `
+UPDATE settings
+   SET value = '${DEFAULT_APPEARANCE.toUpperCase()}',
+       updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+ WHERE key = 'appearance' AND value = 'DARK' AND value <> '${DEFAULT_APPEARANCE.toUpperCase()}'
+   AND deleted_at IS NULL;
+`;
+
+/**
  * Ordered, append-only. To change the schema, add a step — never edit one that
  * has shipped, because devices in the field have already run it.
  */
-export const MIGRATIONS: string[] = [V1, V2, V3, V4];
+export const MIGRATIONS: string[] = [V1, V2, V3, V4, V5];
 
 /** Applies whatever hasn't run yet, tracked in PRAGMA user_version. */
 export async function migrate(db: SQLiteDatabase): Promise<void> {

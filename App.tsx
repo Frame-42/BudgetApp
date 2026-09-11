@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Appearance, ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useFonts,
@@ -28,7 +29,14 @@ import { partInMonth } from './src/db/split';
 import type { Cadence } from './src/db/types';
 import type { TransactionItem } from './src/queries/transactions';
 import { onDay, startOfDay } from './src/time';
-import { GUTTER, color } from './src/theme';
+import {
+  DEFAULT_APPEARANCE,
+  GUTTER,
+  ThemeContext,
+  palettes,
+  resolveScheme,
+  type Scheme,
+} from './src/theme';
 
 /** Everything the Add screen's form holds. */
 type Entry = {
@@ -77,6 +85,7 @@ function Phone() {
     runImport,
     exportCsv,
     loadSampleData,
+    setAppearance,
   } = useBudget();
   const [tab, setTab] = useState(0);
   /* Spend's list is filtered and paged, so it keeps its own state and its own
@@ -105,9 +114,7 @@ function Phone() {
 
   if (!data) {
     return (
-      <Background>
-        <StatusBar style="light" />
-      </Background>
+      <Background />
     );
   }
 
@@ -116,7 +123,6 @@ function Phone() {
   if (!data.onboarded) {
     return (
       <Background>
-        <StatusBar style="light" />
         <OnboardingScreen categories={data.add.categories} onComplete={completeOnboarding} />
       </Background>
     );
@@ -254,6 +260,7 @@ function Phone() {
       onRunImport={runImport}
       onExport={exportCsv}
       onSaveBudget={saveBudget}
+      onAppearanceChange={setAppearance}
       onReset={reset}
       onLoadSample={loadSampleData}
     />,
@@ -261,7 +268,6 @@ function Phone() {
 
   return (
     <Background>
-      <StatusBar style="light" />
       {SCROLLS[tab] ? (
         <ScrollView
           style={styles.fill}
@@ -282,6 +288,43 @@ function Phone() {
   );
 }
 
+/** The phone's scheme, with anything it can't name read as the app's original dark. */
+function useSystemScheme(): Scheme {
+  return useColorScheme() === 'light' ? 'light' : 'dark';
+}
+
+/**
+ * Resolves the stored appearance to a palette for everything below. Until the
+ * database has answered it uses the default, which is what a first run gets.
+ *
+ * The choice is pushed to the OS as well, so what the app does not draw itself —
+ * the keyboard, alerts, the share sheet — lands in the same scheme. That override
+ * is also what `useColorScheme` then reports, so "system" has to clear it before
+ * the phone's own answer comes back.
+ */
+function Themed({ children }: { children: React.ReactNode }) {
+  const appearance = useBudget().data?.you.appearance ?? DEFAULT_APPEARANCE;
+  const system = useSystemScheme();
+
+  useEffect(() => {
+    Appearance.setColorScheme(appearance === 'system' ? 'unspecified' : appearance);
+  }, [appearance]);
+
+  const theme = palettes[resolveScheme(appearance, system)];
+
+  /* The native root view shows through wherever the page doesn't cover — behind
+     the keyboard as it slides, around a modal as it presents. */
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(theme.color.bg[2]).catch(() => {});
+  }, [theme]);
+  return (
+    <ThemeContext.Provider value={theme}>
+      <StatusBar style={theme.statusBar} />
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
 export default function App() {
   const [loaded] = useFonts({
     Geist_300Light,
@@ -292,13 +335,20 @@ export default function App() {
     GeistMono_500Medium,
   });
 
-  if (!loaded) return <View style={[styles.fill, { backgroundColor: color.bg[1] }]} />;
+  const system = useSystemScheme();
+
+  if (!loaded) {
+    const ground = palettes[resolveScheme(DEFAULT_APPEARANCE, system)].color.bg[1];
+    return <View style={[styles.fill, { backgroundColor: ground }]} />;
+  }
 
   return (
     <SafeAreaProvider>
       <DevToolsProvider>
         <BudgetProvider>
-          <Phone />
+          <Themed>
+            <Phone />
+          </Themed>
         </BudgetProvider>
       </DevToolsProvider>
     </SafeAreaProvider>

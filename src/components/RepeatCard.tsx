@@ -4,7 +4,7 @@ import { cardStyle, Eyebrow, T } from './primitives';
 import { tapSelect } from '../haptics';
 import type { Cadence } from '../db/types';
 import { occurrenceAt, shortDate } from '../time';
-import { color, fg, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** The adjective for each cadence: 'Add monthly expense', 'HOUSING · MONTHLY'. */
 export const CADENCE_WORD: Record<Cadence, string> = {
@@ -41,8 +41,10 @@ export function RepeatCard({
   /** The first occurrence: the date being added. */
   startAt: number;
 }) {
+  const styles = useStyles();
+  const { color, fg } = useTheme();
   return (
-    <View style={[cardStyle(true), styles.card]}>
+    <View style={[cardStyle(color, true), styles.card]}>
       <View style={styles.head}>
         <Eyebrow>Repeats</Eyebrow>
         {value ? (
@@ -83,7 +85,7 @@ export function RepeatCard({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   card: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, gap: 10 },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   options: { flexDirection: 'row', gap: 6 },
@@ -98,4 +100,4 @@ const styles = StyleSheet.create({
   },
   optionOn: { backgroundColor: color.textStrong },
   optionOff: { backgroundColor: w(0.05), borderWidth: 1, borderColor: w(0.07) },
-});
+}));

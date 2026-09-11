@@ -3,11 +3,11 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Sheet } from './Sheet';
 import { Eyebrow, T } from './primitives';
 import { MonthGrid } from './MonthPickerSheet';
-import { Choice, MonthStepper, monthLabel, pillStyles } from './MonthStepper';
+import { Choice, MonthStepper, monthLabel, usePillStyles } from './MonthStepper';
 import { tapSelect } from '../haptics';
 import { morph } from '../motion';
 import { addMonths, calendarCells, startOfDay, startOfMonth } from '../time';
-import { color, fg, w } from '../theme';
+import { makeStyles, useTheme } from '../theme';
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -33,6 +33,9 @@ export function DayPickerSheet({
   onPick: (day: number) => void;
   onClose: () => void;
 }) {
+  const styles = useStyles();
+  const pillStyles = usePillStyles();
+  const { color, fg } = useTheme();
   const today = startOfDay(Date.now());
   const latestMonth = startOfMonth(today);
   const [month, setMonth] = useState(() => startOfMonth(value));
@@ -164,7 +167,7 @@ export function DayPickerSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -187,4 +190,4 @@ const styles = StyleSheet.create({
   cellToday: { borderWidth: 1, borderColor: w(0.16) },
   cellPressed: { backgroundColor: w(0.08) },
   cancel: { height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
-});
+}));

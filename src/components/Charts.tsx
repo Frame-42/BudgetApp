@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
-import { color, w } from '../theme';
+import { makeStyles, useTheme } from '../theme';
 import { T } from './primitives';
 
 /**
@@ -9,6 +9,8 @@ import { T } from './primitives';
  * Geometry (r=32, stroke 5, dasharray 201) is taken straight from the design.
  */
 export function BudgetRing({ percent }: { percent: number }) {
+  const styles = useStyles();
+  const { color, w } = useTheme();
   const CIRC = 201;
   return (
     <View style={styles.ring74}>
@@ -82,6 +84,7 @@ function linePath(values: number[], days: number): string {
 }
 
 export function PaceChart({ current, previous }: { current: number[]; previous: number[] }) {
+  const { color, w, fg, mark } = useTheme();
   const days = Math.max(current.length, previous.length, 2);
   const head = current.length
     ? {
@@ -95,7 +98,7 @@ export function PaceChart({ current, previous }: { current: number[]; previous: 
       <Path d="M0 12h320M0 56h320M0 100h320" stroke={w(0.055)} strokeWidth={1} />
       <Path
         d={linePath(previous, days)}
-        stroke="rgba(244,245,247,.32)"
+        stroke={fg(0.32)}
         strokeWidth={1.6}
         strokeDasharray="4 5"
         strokeLinecap="round"
@@ -104,7 +107,7 @@ export function PaceChart({ current, previous }: { current: number[]; previous: 
       {head ? (
         <>
           <Circle cx={head.x} cy={head.y} r={3.4} fill={color.mark} />
-          <Circle cx={head.x} cy={head.y} r={7} fill="none" stroke="rgba(233,235,242,.22)" strokeWidth={1.2} />
+          <Circle cx={head.x} cy={head.y} r={7} fill="none" stroke={mark(0.22)} strokeWidth={1.2} />
         </>
       ) : null}
     </Svg>
@@ -113,11 +116,12 @@ export function PaceChart({ current, previous }: { current: number[]; previous: 
 
 /** A 14px legend rule — solid for August, dashed for July. RN borders can't dash a 1px line. */
 export function LegendRule({ dashed }: { dashed?: boolean }) {
+  const { color, fg } = useTheme();
   return (
     <Svg width={14} height={2} fill="none">
       <Path
         d="M0 1h14"
-        stroke={dashed ? 'rgba(244,245,247,.45)' : color.mark}
+        stroke={dashed ? fg(0.45) : color.mark}
         strokeWidth={2}
         strokeDasharray={dashed ? '2.5 2.5' : undefined}
       />
@@ -139,9 +143,6 @@ const DONUT_GAP = 5;
 const DONUT_BOX = 2 * (DONUT_RADIUS + (DONUT_STROKE + DONUT_EXPAND) / 2) + 6;
 const DONUT_MID = DONUT_BOX / 2;
 const DONUT_CIRC = 2 * Math.PI * DONUT_RADIUS;
-
-/** The one grey every arc is painted in; only its alpha changes. */
-const ARC_RGB = '233,235,242';
 
 /**
  * What an arc that lost the selection steps back to. A picked arc keeps its own
@@ -207,6 +208,9 @@ export function SplitDonut({
   /** Makes the arcs themselves the control, by index into `shares`. */
   onPressShare?: (index: number) => void;
 }) {
+  const styles = useStyles();
+  /* The one grey every arc is painted in; only its alpha changes. */
+  const { mark } = useTheme();
   // Display percentages are integers; cents retain the exact proportions the
   // geometry and hit testing need.
   const { segments, totalCents } = donutSegments(shares);
@@ -257,7 +261,7 @@ export function SplitDonut({
                   cy={DONUT_MID}
                   r={DONUT_RADIUS}
                   fill="none"
-                  stroke={`rgba(${ARC_RGB},${s.alpha})`}
+                  stroke={mark(s.alpha)}
                   strokeWidth={s.stroke}
                   strokeLinecap="round"
                 />
@@ -275,7 +279,7 @@ export function SplitDonut({
                 key={s.key}
                 d={`M ${from.x} ${from.y} A ${DONUT_RADIUS} ${DONUT_RADIUS} 0 ${s.largeArc ? 1 : 0} 1 ${to.x} ${to.y}`}
                 fill="none"
-                stroke={`rgba(${ARC_RGB},${s.alpha})`}
+                stroke={mark(s.alpha)}
                 strokeWidth={s.stroke}
                 strokeLinecap="round"
               />
@@ -292,7 +296,7 @@ export function SplitDonut({
 
 const fill = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } as const;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(() => ({
   ring74: { width: 74, height: 74 },
   ringCenter: { ...fill, alignItems: 'center', justifyContent: 'center' },
   donut: { width: DONUT_BOX, height: DONUT_BOX },
@@ -302,4 +306,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 3,
   },
-});
+}));

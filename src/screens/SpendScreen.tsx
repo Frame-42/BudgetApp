@@ -6,14 +6,14 @@ import { SearchIcon } from '../components/Icons';
 import { TransactionRow } from '../components/TransactionRow';
 import { SpendItemSheet } from '../components/SpendItemSheet';
 import { MonthPickerSheet } from '../components/MonthPickerSheet';
-import { Choice, MonthStepper, monthLabel, pillStyles } from '../components/MonthStepper';
+import { Choice, MonthStepper, monthLabel, usePillStyles } from '../components/MonthStepper';
 import { tapSelect } from '../haptics';
 import type { SplitTarget } from '../db/split';
 import type { TransactionItem } from '../queries/transactions';
 import type { Period, TransactionFeed } from '../state/useTransactionFeed';
 import { figure } from '../format';
 import { startOfMonth } from '../time';
-import { GUTTER, color, fg, radius, w } from '../theme';
+import { GUTTER, makeStyles, radius, useTheme } from '../theme';
 
 /** The same 280ms ease the tab bar uses, so the pill's morph matches the app. */
 const morph = () =>
@@ -46,6 +46,9 @@ export function SpendScreen({
   onDelete: (target: SplitTarget) => void;
   onStopRecurring: (id: string) => void;
 }) {
+  const styles = useStyles();
+  const pillStyles = usePillStyles();
+  const { color, fg } = useTheme();
   /* Which row is being acted on: transient overlay state, so it stays local. */
   const [selected, setSelected] = useState<TransactionItem | null>(null);
   const open = useCallback((item: TransactionItem) => setSelected(item), []);
@@ -170,7 +173,7 @@ export function SpendScreen({
         />
       </FieldSurface>
 
-      {categoriesRow(feed)}
+      {categoriesRow(feed, styles)}
     </View>
   );
 
@@ -252,7 +255,7 @@ export function SpendScreen({
 }
 
 /** Multi-select, which is exactly what `Chip` was split out of `CategoryChips` for. */
-function categoriesRow(feed: TransactionFeed) {
+function categoriesRow(feed: TransactionFeed, styles: ReturnType<typeof useStyles>) {
   if (feed.categories.length < 2) return null;
   return (
     <ScrollView
@@ -274,7 +277,7 @@ function categoriesRow(feed: TransactionFeed) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ w }) => ({
   screen: { flex: 1 },
   head: { gap: 12 },
   header: {
@@ -310,4 +313,4 @@ const styles = StyleSheet.create({
   dayHead: { paddingTop: 16, paddingBottom: 10 },
   empty: { padding: 22, gap: 10, marginTop: 18, alignItems: 'flex-start' },
   footer: { paddingTop: 18, textAlign: 'center' },
-});
+}));

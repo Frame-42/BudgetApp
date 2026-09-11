@@ -7,7 +7,7 @@ import { morph } from '../motion';
 import { tapDone, tapSelect, tapWarn } from '../haptics';
 import { amountLabel } from '../format';
 import type { TransactionItem } from '../queries/transactions';
-import { color, radius, w } from '../theme';
+import { makeStyles, radius, useTheme } from '../theme';
 
 /** How long an armed action waits for its second tap before standing down. */
 const ARM_TIMEOUT_MS = 4000;
@@ -39,6 +39,8 @@ export function SpendItemSheet({
   onDelete: (target: { id: string; splitId: string | null }) => void;
   onStopRecurring: (id: string) => void;
 }) {
+  const styles = useStyles();
+  const { color } = useTheme();
   /* Which action is waiting for its second tap. One at a time: arming one
      stands the other down, so a stray tap never lands on a stale confirmation. */
   const [armed, setArmed] = useState<'delete' | 'stop' | null>(null);
@@ -173,7 +175,7 @@ export function SpendItemSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -192,7 +194,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: w(0.055),
   },
-  actionArmed: { borderColor: 'rgba(180,196,229,0.4)', backgroundColor: w(0.075) },
+  actionArmed: { borderColor: color.accentLine, backgroundColor: w(0.075) },
   actionPressed: { backgroundColor: w(0.12) },
   cancel: { height: 40, alignItems: 'center', justifyContent: 'center' },
-});
+}));

@@ -20,7 +20,7 @@ import { tapDone, tapSelect } from '../haptics';
 import { euroLabel } from '../format';
 import { morph } from '../motion';
 import { daysInMonth } from '../time';
-import { color, fg, GUTTER, radius, w } from '../theme';
+import { GUTTER, makeStyles, radius, useTheme } from '../theme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -52,6 +52,7 @@ const FOOTNOTES = [
 const LAST_STEP = 4;
 
 function Arrow() {
+  const { color } = useTheme();
   return (
     <Svg width={15} height={15} viewBox="0 0 18 18" fill="none">
       <Path
@@ -82,6 +83,8 @@ export function OnboardingScreen({
     weeklyRecap: boolean;
   }) => void;
 }) {
+  const styles = useStyles();
+  const { color, w, fg, tint } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(0);
@@ -390,7 +393,7 @@ export function OnboardingScreen({
 
       <BlurView
         intensity={18}
-        tint="dark"
+        tint={tint}
         style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) + 14 }]}
       >
         <Pressable
@@ -411,7 +414,7 @@ export function OnboardingScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(({ color, w }) => ({
   fill: { flex: 1 },
 
   header: {
@@ -519,7 +522,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingHorizontal: GUTTER,
     gap: 14,
-    backgroundColor: 'rgba(11,12,16,0.72)',
+    backgroundColor: color.scrim,
   },
   cta: {
     height: 52,
@@ -530,4 +533,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 9,
   },
-});
+}));
