@@ -202,7 +202,10 @@ shadows; the only glow in the app is the status dot's.
 - `StatusDot` — the 6pt accent dot with its glow. The one spot of colour.
 - Charts (`Charts.tsx`): `CommitmentBar` (Home's spent / planned / free rail;
   planned is the mark at a lower alpha, not a new hue), `PaceChart` with its solid and dashed
-  `LegendRule`, and `SplitDonut`.
+  `LegendRule`, and `SplitDonut`. On the month in progress the solid line carries
+  on past today as the forecast: the same stroke at `mark(.3)`, in straight
+  day-to-day segments so a usual spending day shows as a step. It has no legend
+  row. The dashed comparison stays the chart's only broken line.
 - Icons (`Icons.tsx`) — hand-drawn line icons taking `color` and `size`. There
   is no icon library.
 

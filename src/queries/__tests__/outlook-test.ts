@@ -1,4 +1,13 @@
-import { forecastTail, median, pastTails, projectSchedules, type DayRow, type ScheduleInput } from '../outlook';
+import {
+  dayMedians,
+  forecastCurve,
+  forecastTail,
+  median,
+  pastTails,
+  projectSchedules,
+  type DayRow,
+  type ScheduleInput,
+} from '../outlook';
 
 const day = (y: number, m: number, d: number, h = 9) => new Date(y, m, d, h).getTime();
 
@@ -119,5 +128,58 @@ describe('forecastTail', () => {
 
   it('expects nothing more on the last day of the month', () => {
     expect(forecastTail([{ cents: 1_000, days: 10 }, { cents: 2_000, days: 10 }], 0)).toBe(0);
+  });
+});
+
+describe('dayMedians', () => {
+  const row = (month: string, d: number, unplannedCents: number): DayRow => ({
+    month,
+    day: d,
+    entries: 1,
+    unplannedCents,
+  });
+
+  it('shows the day the money usually goes', () => {
+    // 27 Nov: four days left. Three of four months spent 100 € on the 28th.
+    const at = day(2026, 10, 27);
+    const medians = dayMedians(
+      [row('2026-10', 28, 10_000), row('2026-09', 28, 10_000), row('2026-08', 28, 12_000), row('2026-07', 2, 500)],
+      at,
+    );
+    expect(medians).toEqual([10_000, 0, 0]);
+  });
+
+  it('leaves a month out of a day it does not have', () => {
+    // 30 Dec: only the 31st is left. November has no 31st, so October answers alone.
+    const medians = dayMedians([row('2026-11', 5, 100), row('2026-10', 31, 4_000)], day(2026, 11, 30));
+    expect(medians).toEqual([4_000]);
+  });
+});
+
+describe('forecastCurve', () => {
+  it('starts at today, steps on planned days and ends on the forecast', () => {
+    const curve = forecastCurve({
+      standing: 1_000,
+      plannedByDay: new Map([[29, 500]]),
+      medians: [0, 300, 100],
+      tailCents: 800,
+      today: 27,
+    });
+    expect(curve).toEqual([1_000, 1_000, 1_000 + 500 + 600, 1_000 + 500 + 800]);
+  });
+
+  it('spreads the rest evenly when no day has a shape', () => {
+    expect(
+      forecastCurve({ standing: 0, plannedByDay: new Map(), medians: [0, 0, 0, 0], tailCents: 100, today: 26 }),
+    ).toEqual([0, 25, 50, 75, 100]);
+  });
+
+  it('keeps the last point exact however the shares round', () => {
+    const curve = forecastCurve({ standing: 0, plannedByDay: new Map(), medians: [1, 1, 1], tailCents: 100, today: 27 });
+    expect(curve[curve.length - 1]).toBe(100);
+  });
+
+  it('is just today on the last day of the month', () => {
+    expect(forecastCurve({ standing: 42, plannedByDay: new Map(), medians: [], tailCents: 0, today: 30 })).toEqual([42]);
   });
 });

@@ -306,6 +306,18 @@ The ceiling is the budget, not income, because the importer drops incoming
 money. Trends' current-month bar still shows every booked row, later split
 parts included. That is a deliberate difference.
 
+**Trends draws the same forecast as a curve.** When the month in progress is
+picked, `PaceChart` continues it from today as a dimmed line (`pace.projection`).
+`forecastCurve` takes the line's *shape* from `dayMedians`: per day of the
+month, the median unplanned spend of the same basis months. Its *total* comes
+from `forecastTail`, so unfiltered it ends exactly on Home's figure. Both are
+needed. Across six irregular months most days' median is 0, so the medians
+alone would understate the month, and a flat rate alone would hide the day the
+money usually goes. Planned money steps on its own date. The forecast narrows
+with the category selection; a month's presence does not (the day-0 rows in
+`loadTrends`), for the reason the bars don't. It is drawn as straight segments,
+not the spline, so a step stays a step.
+
 **Spend and Trends sit outside the snapshot.** Both take query arguments — a
 period, a search term and a set of categories for Spend; a set of categories for
 Trends — which the provider's argument-free "recompute everything" shape cannot
@@ -333,7 +345,7 @@ and the screen switches between those precomputed spans locally. `endOffset`
 is the displayed period's final month relative to today (never positive).
 Swiping pages by the selected span; historical months are completed months,
 not an artificial "current" month. The displayed `from`/`to` window also drives
-the Spend hand-off. The bars, pace and split reads run through one
+the Spend hand-off. The bars, pace, split and schedule reads run through one
 `withExclusiveTransactionAsync` transaction handle so they all describe one WAL
 snapshot on native; web uses `withTransactionAsync` because Expo does not support
 the exclusive API there. Don't move those statements back to independent calls.
@@ -564,6 +576,11 @@ the app keeps using its already-open connection and nothing appears to change:
 xcrun simctl terminate booted host.exp.Exponent
 xcrun simctl openurl booted "exp://127.0.0.1:8081"   # host is in the /reload response
 ```
+
+A `/reload` can also draw an SVG wrong: native views from the previous JS
+instance are reused, and a stroke that sets no `strokeDasharray` keeps whatever
+dash pattern its view last had — the Trends gridlines came out dashed this way
+once. If a chart looks off after a reload, cold-start before debugging it.
 
 A `/reload` can also land Expo Go in a broken runtime — "Cannot find native module
 'ExpoAsset'" on a red screen, with no dependency having changed. The cold start

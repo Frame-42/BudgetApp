@@ -80,15 +80,48 @@ function linePath(values: number[], days: number): string {
   return d;
 }
 
-export function PaceChart({ current, previous }: { current: number[]; previous: number[] }) {
+/**
+ * The forecast's path: straight day-to-day segments from `start` on. A spline
+ * would round the day the money usually goes into a slope and overshoot past
+ * it; the point of this line is to show that day.
+ */
+function polylinePath(values: number[], start: number, days: number): string {
+  const x = (i: number) => (days <= 1 ? 0 : ((start + i) / (days - 1)) * PLOT.width);
+  const y = (v: number) => PLOT.bottom - v * (PLOT.bottom - PLOT.top);
+  return values
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+    .join(' ');
+}
+
+export function PaceChart({
+  current,
+  previous,
+  projection,
+}: {
+  current: number[];
+  previous: number[];
+  /** Today's point, then one per day to the month's end. */
+  projection?: number[] | null;
+}) {
   const { color, w, fg, mark } = useTheme();
-  const days = Math.max(current.length, previous.length, 2);
+  /* With a forecast the axis is the whole month, so today sits where it falls. */
+  const projectionStart = Math.max(0, current.length - 1);
+  const days = Math.max(
+    current.length,
+    previous.length,
+    projection?.length ? projectionStart + projection.length : 0,
+    2,
+  );
+
   const head = current.length
     ? {
         x: ((current.length - 1) / (days - 1)) * PLOT.width,
         y: PLOT.bottom - current[current.length - 1] * (PLOT.bottom - PLOT.top),
       }
     : null;
+
+  const forecastLine =
+    projection && projection.length > 1 ? polylinePath(projection, projectionStart, days) : '';
 
   return (
     <Svg viewBox="0 0 320 112" width="100%" height={112} fill="none" preserveAspectRatio="none">
@@ -100,7 +133,28 @@ export function PaceChart({ current, previous }: { current: number[]; previous: 
         strokeDasharray="4 5"
         strokeLinecap="round"
       />
-      <Path d={linePath(current, days)} stroke={color.mark} strokeWidth={2.1} strokeLinecap="round" />
+      {/*
+        The forecast is this month's own line carried on past today, at a lower
+        alpha — the comparison stays the only broken line on the chart, so the
+        two never read as variations of one style.
+
+        Always mounted and emptied rather than removed: Trends wraps a month
+        pick in a LayoutAnimation, whose delete step would fade an unmounted
+        path out over 280ms after the other lines had redrawn.
+      */}
+      <Path
+        d={forecastLine}
+        stroke={mark(0.3)}
+        strokeWidth={2.1}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d={linePath(current, days)}
+        stroke={color.mark}
+        strokeWidth={2.1}
+        strokeLinecap="round"
+      />
       {head ? (
         <>
           <Circle cx={head.x} cy={head.y} r={3.4} fill={color.mark} />
