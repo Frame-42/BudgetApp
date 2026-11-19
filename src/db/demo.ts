@@ -90,7 +90,7 @@ const CATEGORIES: DemoCategory[] = [
     merchants: ['Spotify', 'iCloud', 'Netflix', 'NZZ'],
   },
   {
-    name: 'Other',
+    name: 'Misc',
     limitCents: 44_000,
     weight: 0.12,
     count: 4,

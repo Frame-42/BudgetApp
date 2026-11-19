@@ -46,7 +46,10 @@ export const DEFAULT_CATEGORIES: { name: string; alpha: number }[] = [
   { name: 'Housing', alpha: 0.95 },
   { name: 'Investment', alpha: 0.8 },
   // Stays last: it is the catch-all, and reads as the end of the list.
-  { name: 'Other', alpha: 0.16 },
+  // 'Misc', not 'Other': that word belongs to the Trends donut's rollup of
+  // whatever falls outside its biggest slices, and one name for both made a
+  // real category indistinguishable from "the rest". Migration v6 renamed it.
+  { name: 'Misc', alpha: 0.16 },
 ];
 
 /** Runs once, on an empty database. */
@@ -90,7 +93,7 @@ export async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
  * has to stay gone. Checking only live rows would resurrect it on the next open.
  *
  * Appends rather than renumbering, so these land after whatever order the user
- * already has — including after 'Other' on a database that predates them.
+ * already has — including after 'Misc' on a database that predates them.
  */
 export async function addMissingDefaultCategories(db: SQLiteDatabase): Promise<void> {
   const rows = await db.getAllAsync<{ name: string }>('SELECT name FROM categories');
@@ -117,7 +120,7 @@ export async function addMissingDefaultCategories(db: SQLiteDatabase): Promise<v
 /**
  * Puts an existing database's default categories into `DEFAULT_CATEGORIES` order.
  * `addMissingDefaultCategories` appends, so a database that predates a new
- * default ends up with it stranded after 'Other'.
+ * default ends up with it stranded after 'Misc'.
  *
  * One-shot, gated by the caller on a `sync_meta` key rather than run on every
  * open: every row it touches stamps `updated_at` and queues an outbox entry, and

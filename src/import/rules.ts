@@ -89,8 +89,8 @@ export function merchantKey(raw: string): string {
  *
  * Two rules held to deliberately:
  *
- * - Nothing maps to 'Other'. A code we don't know goes to review, where the user
- *   decides once and the merchant memory keeps it — filing it as Other would
+ * - Nothing maps to 'Misc'. A code we don't know goes to review, where the user
+ *   decides once and the merchant memory keeps it — filing it as Misc would
  *   look like a decision while being the absence of one.
  * - 5912 (drug stores) and 5977 (cosmetics) are Groceries, not Health and not
  *   Shopping. A German drugstore basket is toiletries, cleaning supplies and
