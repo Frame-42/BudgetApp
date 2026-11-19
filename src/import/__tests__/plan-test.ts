@@ -56,6 +56,92 @@ describe('buildImportPlan', () => {
     expect(plan.rows.every((row) => row.categoryId === 'investment' && row.via === 'trading')).toBe(true);
   });
 
+  it('excludes the savings-plan BUY that invests a SAVEBACK reward, not just the reward itself', async () => {
+    const getAllAsync = jest.fn(async (source: string): Promise<unknown[]> => {
+      if (source.includes('FROM categories')) {
+        return [
+          {
+            id: 'investment',
+            name: 'Investment',
+            color_alpha: 0.8,
+            sort_order: 0,
+            archived: 0,
+            updated_at: 0,
+            deleted_at: null,
+            owner_id: null,
+          },
+        ];
+      }
+      if (source.includes('GROUP BY merchant, category_id')) return [];
+      if (source.includes('SELECT external_id')) return [];
+      throw new Error(`Unexpected query: ${source}`);
+    });
+    const db = { getAllAsync } as unknown as SQLiteDatabase;
+    const csv = [
+      'datetime,amount,name,category,transaction_id,type,symbol',
+      // Reward lands first, cash only — same shape as a real Trade Republic export.
+      '2026-09-01T00:15:02Z,8.28,MSCI World Small Cap,CASH,reward-1,BENEFITS_SAVEBACK,IE00BF4RFH31',
+      // The savings-plan order that actually invests it, a day and a half later.
+      '2026-09-02T14:04:18Z,-8.28,MSCI World Small Cap,TRADING,buy-invest-reward,BUY,IE00BF4RFH31',
+      // A same-day, same-fund purchase for a different amount is real spending.
+      '2026-09-02T14:04:43Z,-40.00,MSCI World Small Cap,TRADING,buy-regular,BUY,IE00BF4RFH31',
+    ].join('\n');
+
+    const plan = await buildImportPlan(db, csv);
+
+    expect(plan.ignoredSaveback).toBe(2);
+    expect(plan.rows.map((row) => row.externalId)).toEqual(['buy-regular']);
+    expect(plan.rows[0].categoryId).toBe('investment');
+  });
+
+  describe('matching a BUY to the SAVEBACK reward it invests', () => {
+    const HEADER = 'datetime,amount,name,category,transaction_id,type,symbol';
+    const REWARD = '2026-09-01T00:15:02Z,8.28,Fund,CASH,reward-1,BENEFITS_SAVEBACK,IE00BF4RFH31';
+    const ids = async (...lines: string[]) => {
+      const plan = await buildImportPlan(fakeDb([]), [HEADER, ...lines].join('\n'));
+      return { plan, ids: plan.rows.map((row) => row.externalId) };
+    };
+
+    it('does not treat two blank symbols as the same fund', async () => {
+      const { ids: kept } = await ids(
+        '2026-09-01T00:15:02Z,8.28,Fund,CASH,reward-1,BENEFITS_SAVEBACK,',
+        '2026-09-02T14:04:18Z,-8.28,Other Fund,TRADING,buy-1,BUY,',
+      );
+      expect(kept).toEqual(['buy-1']);
+    });
+
+    it('counts a repeated investing BUY as a repeat, not as spending', async () => {
+      const buy = '2026-09-02T14:04:18Z,-8.28,Fund,TRADING,buy-1,BUY,IE00BF4RFH31';
+      const { plan, ids: kept } = await ids(REWARD, buy, buy);
+      expect(kept).toEqual([]);
+      expect(plan.ignoredSaveback).toBe(2);
+      expect(plan.alreadyPresent).toBe(1);
+    });
+
+    it('does not let a sale of the same amount use up the reward', async () => {
+      const { plan, ids: kept } = await ids(
+        REWARD,
+        '2026-09-02T09:00:00Z,8.28,Fund,TRADING,sell-1,SELL,IE00BF4RFH31',
+        '2026-09-02T14:04:18Z,-8.28,Fund,TRADING,buy-1,BUY,IE00BF4RFH31',
+      );
+      expect(kept).toEqual([]);
+      expect(plan.ignoredIncoming).toBe(1);
+    });
+
+    it('keeps a BUY placed before the reward', async () => {
+      const { ids: kept } = await ids(
+        '2026-08-25T14:04:18Z,-8.28,Fund,TRADING,buy-early,BUY,IE00BF4RFH31',
+        REWARD,
+      );
+      expect(kept).toEqual(['buy-early']);
+    });
+
+    it('keeps a BUY whose date cannot be read', async () => {
+      const { ids: kept } = await ids(REWARD, 'not-a-date,-8.28,Fund,TRADING,buy-1,BUY,IE00BF4RFH31');
+      expect(kept).toEqual(['buy-1']);
+    });
+  });
+
   it('is null on a first import, with nothing previously imported', async () => {
     const db = fakeDb([]);
     const csv = ['datetime,amount,name,transaction_id', '2026-09-01T10:00:00+02:00,-5.00,Shop,a'].join('\n');
