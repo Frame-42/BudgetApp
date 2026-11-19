@@ -195,10 +195,27 @@ UPDATE settings
 `;
 
 /**
+ * The catch-all category is 'Misc' rather than 'Other'. 'Other' is what the
+ * Trends donut calls its rollup of the smaller slices, and a category of the
+ * same name could not be told apart from it. Every row is renamed — archived and
+ * soft-deleted ones too — because `addMissingDefaultCategories` matches defaults
+ * by name against all of them, and a retired 'Other' left behind would let a
+ * fresh 'Misc' appear on the next open. Skipped where a 'Misc' already exists,
+ * so the rename can never produce two categories of one name.
+ */
+const V6 = `
+UPDATE categories
+   SET name = 'Misc',
+       updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+ WHERE name = 'Other'
+   AND NOT EXISTS (SELECT 1 FROM categories WHERE name = 'Misc');
+`;
+
+/**
  * Ordered, append-only. To change the schema, add a step — never edit one that
  * has shipped, because devices in the field have already run it.
  */
-export const MIGRATIONS: string[] = [V1, V2, V3, V4, V5];
+export const MIGRATIONS: string[] = [V1, V2, V3, V4, V5, V6];
 
 /** Applies whatever hasn't run yet, tracked in PRAGMA user_version. */
 export async function migrate(db: SQLiteDatabase): Promise<void> {

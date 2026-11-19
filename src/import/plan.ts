@@ -184,6 +184,38 @@ async function merchantMemory(db: SQLiteDatabase): Promise<Map<string, string>> 
   return new Map([...best].map(([key, held]) => [key, held.categoryId]));
 }
 
+/** How late a savings-plan BUY can land after the reward it invests and still count as the same event. */
+const SAVEBACK_INVEST_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Finds the not-yet-used reward this BUY looks like it invests — same fund,
+ * same amount to the cent, closest in time — and marks it used so a second
+ * BUY at the same amount can't claim it too.
+ *
+ * Deliberately narrow, because a false match drops real spending: the fund has
+ * to be named (two blank symbols are not the same fund), and the BUY has to
+ * come after the reward — an order placed before it cannot be investing it.
+ */
+function consumeSavebackReward(
+  rewards: { symbol: string; amountCents: number; occurredAt: number; used: boolean }[],
+  symbol: string,
+  amountCents: number,
+  occurredAt: number,
+): boolean {
+  if (symbol === '') return false;
+  let best: (typeof rewards)[number] | null = null;
+  for (const reward of rewards) {
+    if (reward.used || reward.symbol !== symbol || reward.amountCents !== amountCents) continue;
+    const delta = occurredAt - reward.occurredAt;
+    // Written as the test that has to pass, so an unparseable date (NaN) fails it.
+    if (!(delta >= 0 && delta <= SAVEBACK_INVEST_WINDOW_MS)) continue;
+    if (!best || delta < occurredAt - best.occurredAt) best = reward;
+  }
+  if (!best) return false;
+  best.used = true;
+  return true;
+}
+
 export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise<ImportPlan> {
   const records = parseCsv(text, REQUIRED);
   if (records.length === 0) throw new CsvError('That file has no transactions in it.');
@@ -197,6 +229,10 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
   ]);
 
   const byName = new Map(categories.map((category) => [category.name, category.id]));
+  // 'Misc' was called 'Other' until migration v6, and a backup exported before
+  // then still says so. Without this its catch-all rows would restore into review.
+  const misc = byName.get('Misc');
+  if (misc && !byName.has('Other')) byName.set('Other', misc);
   const imported = new Set(existing.map((row) => row.external_id).filter(Boolean) as string[]);
   const handEntered = existing.filter((row) => row.external_id === null);
   const latestImportedAt = existing.reduce<number | null>(
@@ -211,6 +247,22 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
   let alreadyPresent = 0;
   let ignoredSaveback = 0;
 
+  // A SAVEBACK reward doesn't stay cash: a savings-plan BUY of the same fund,
+  // for the same amount, follows within a few days to actually invest it. That
+  // BUY is the reward becoming shares, not the user spending money, so it has
+  // to be excluded alongside the reward itself or the same euro shows up as
+  // both a saveback and a purchase.
+  const savebackRewards = records
+    .filter((record) => isSavebackInvestment(record.type ?? ''))
+    .map((record) => ({
+      symbol: (record.symbol ?? '').trim(),
+      amountCents: Math.abs(Math.round(Number.parseFloat(record.amount || '0') * 100)),
+      occurredAt: Number.isFinite(Date.parse(record.datetime))
+        ? Date.parse(record.datetime)
+        : Date.parse(record.date),
+      used: false,
+    }));
+
   for (const record of records) {
     if (isSavebackInvestment(record.type ?? '')) {
       ignoredSaveback++;
@@ -218,6 +270,24 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
     }
 
     const amountCents = Math.round(Number.parseFloat(record.amount || '0') * 100);
+    const occurredAt = Number.isFinite(Date.parse(record.datetime))
+      ? Date.parse(record.datetime)
+      : Date.parse(record.date);
+
+    // Money out only: a sale of the same fund carries category TRADING too, and
+    // must not use up the reward the real order is about to claim.
+    if (
+      amountCents < 0 &&
+      isSecuritiesPurchase({ type: record.type ?? '', category: record.category ?? '' }) &&
+      consumeSavebackReward(savebackRewards, (record.symbol ?? '').trim(), -amountCents, occurredAt)
+    ) {
+      // Remembered like any other row, so a repeat of this line later in the
+      // file is a repeat rather than a second purchase with no reward left.
+      seen.add(record.transaction_id);
+      ignoredSaveback++;
+      continue;
+    }
+
     // The user's rule, applied before anything else: incoming money is not a
     // transaction this app is for.
     if (!Number.isFinite(amountCents) || amountCents >= 0) {
@@ -233,9 +303,6 @@ export async function buildImportPlan(db: SQLiteDatabase, text: string): Promise
     }
     seen.add(externalId);
 
-    const occurredAt = Number.isFinite(Date.parse(record.datetime))
-      ? Date.parse(record.datetime)
-      : Date.parse(record.date);
     const raw = record.name || record.description || '';
     const merchant = merchantName(raw);
     const key = merchantKey(raw);

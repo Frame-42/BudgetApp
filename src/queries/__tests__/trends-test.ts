@@ -19,19 +19,42 @@ describe('apportionPercentages', () => {
 });
 
 describe('toSplit', () => {
-  it('re-sorts a named Other category after folding the tail into it', () => {
+  it('rolls the tail into an Other that stays last even when it is the largest slice', () => {
     const split = toSplit([
       { id: 'a', name: 'Groceries', alpha: 0.8, total: 40 },
       { id: 'b', name: 'Dining', alpha: 0.7, total: 30 },
       { id: 'c', name: 'Transport', alpha: 0.6, total: 20 },
-      { id: 'd', name: 'Other', alpha: 0.5, total: 19 },
+      { id: 'd', name: 'Misc', alpha: 0.5, total: 19 },
+      { id: 'e', name: 'Housing', alpha: 0.4, total: 18 },
+      { id: 'f', name: 'Health', alpha: 0.3, total: 17 },
+      { id: 'g', name: 'Leisure', alpha: 0.2, total: 16 },
+    ]);
+
+    expect(split.map((share) => share.name)).toEqual(['Groceries', 'Dining', 'Transport', 'Misc', 'Other']);
+    expect(split[4].totalCents).toBe(51);
+    expect(split[4].categoryIds).toEqual(['e', 'f', 'g']);
+    expect(split.reduce((sum, share) => sum + share.percent, 0)).toBe(100);
+  });
+
+  it('ranks Misc like any other category', () => {
+    const split = toSplit([
+      { id: 'd', name: 'Misc', alpha: 0.5, total: 90 },
+      { id: 'a', name: 'Groceries', alpha: 0.8, total: 10 },
+    ]);
+
+    expect(split.map((share) => share.name)).toEqual(['Misc', 'Groceries']);
+  });
+
+  it('names a fifth category instead of an Other that would hold only it', () => {
+    const split = toSplit([
+      { id: 'a', name: 'Groceries', alpha: 0.8, total: 40 },
+      { id: 'b', name: 'Dining', alpha: 0.7, total: 30 },
+      { id: 'c', name: 'Transport', alpha: 0.6, total: 20 },
       { id: 'e', name: 'Housing', alpha: 0.4, total: 18 },
       { id: 'f', name: 'Health', alpha: 0.3, total: 17 },
     ]);
 
-    expect(split[0].name).toBe('Other');
-    expect(split[0].totalCents).toBe(54);
-    expect(split.reduce((sum, share) => sum + share.percent, 0)).toBe(100);
+    expect(split.map((share) => share.name)).toEqual(['Groceries', 'Dining', 'Transport', 'Housing', 'Health']);
   });
 
   it('orders equal totals deterministically', () => {

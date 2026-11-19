@@ -368,9 +368,9 @@ made. On a restore into an empty app the memory is empty, so it still wins there
 decision the user already made, and it is derived by counting existing
 transactions rather than stored, so ordinary manual entry teaches it too.
 
-**Nothing is auto-filed as 'Other', and no MCC appears in two groups.** An
+**Nothing is auto-filed as 'Misc', and no MCC appears in two groups.** An
 unmapped code goes to review, where one answer teaches the memory for good;
-filing it as Other would look like a decision while being the absence of one. The
+filing it as Misc would look like a decision while being the absence of one. The
 groups in `MCC_CATEGORIES` are flattened into a Map, so a code listed twice lets
 the last group silently win — 5813 was in both Dining and Leisure once already.
 **A field's whole surface is its touch target, not the text in it.** A bare

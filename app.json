@@ -8,7 +8,20 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.framefr.budget"
+      "bundleIdentifier": "com.framefr.budget",
+      "infoPlist": {
+        "UIApplicationSceneManifest": {
+          "UIApplicationSupportsMultipleScenes": false,
+          "UISceneConfigurations": {
+            "UIWindowSceneSessionRoleApplication": [
+              {
+                "UISceneConfigurationName": "Default Configuration",
+                "UISceneDelegateClassName": "$(PRODUCT_MODULE_NAME).SceneDelegate"
+              }
+            ]
+          }
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,6 +37,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/withSceneDelegate",
       "expo-font",
       "expo-sqlite",
       "expo-sharing",

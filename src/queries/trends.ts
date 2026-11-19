@@ -118,12 +118,25 @@ export function apportionPercentages(weights: number[]): number[] {
   return result;
 }
 
-/** Top four categories by spend, with the tail rolled into "Other". */
+/** How many categories the donut names before the rest becomes "Other". */
+const NAMED_SLICES = 4;
+
+/**
+ * The four biggest categories by spend, then "Other" — always last, and always
+ * exactly the rest. "Other" is never a category of the user's: the catch-all
+ * they can file things under is 'Misc', which ranks like any other, so a slice
+ * called "Other" only ever means "everything not named above". The row carries
+ * every id it stands for, so selecting it selects the whole tail.
+ */
 export function toSplit(rows: SplitRow[]): Share[] {
   const ranked = [...rows].sort(
     (a, b) => b.total - a.total || compareText(a.name, b.name) || compareText(a.id, b.id),
   );
-  const shares: Share[] = ranked.slice(0, 4).map((r) => ({
+  // A tail of one is just a fifth category: calling it "Other" would hide its
+  // name and save no slice. It is the smallest, so it still sits last.
+  const keep = ranked.length === NAMED_SLICES + 1 ? NAMED_SLICES + 1 : NAMED_SLICES;
+
+  const shares: Share[] = ranked.slice(0, keep).map((r) => ({
     name: r.name,
     percent: 0,
     alpha: r.alpha,
@@ -131,34 +144,18 @@ export function toSplit(rows: SplitRow[]): Share[] {
     categoryIds: [r.id],
   }));
 
-  const rest = ranked.slice(4);
+  const rest = ranked.slice(keep);
   const restTotal = rest.reduce((sum, r) => sum + r.total, 0);
   if (restTotal > 0) {
-    // One of the seven categories is itself called "Other". When it lands in the
-    // top four the tail folds into it, rather than sitting beside it as a second
-    // slice of the same name. Either way the row carries every id it stands for,
-    // so selecting it selects the whole tail.
-    const named = shares.find((share) => share.name === 'Other');
-    if (named) {
-      named.totalCents += restTotal;
-      named.categoryIds = [...named.categoryIds, ...rest.map((r) => r.id)];
-    } else {
-      shares.push({
-        name: 'Other',
-        percent: 0,
-        alpha: 0.16,
-        totalCents: restTotal,
-        categoryIds: rest.map((r) => r.id),
-      });
-    }
+    shares.push({
+      name: 'Other',
+      percent: 0,
+      alpha: 0.16,
+      totalCents: restTotal,
+      categoryIds: rest.map((r) => r.id),
+    });
   }
 
-  shares.sort(
-    (a, b) =>
-      b.totalCents - a.totalCents ||
-      compareText(a.name, b.name) ||
-      compareText(a.categoryIds.join('\0'), b.categoryIds.join('\0')),
-  );
   const percentages = apportionPercentages(shares.map((share) => share.totalCents));
   shares.forEach((share, index) => {
     share.percent = percentages[index];
