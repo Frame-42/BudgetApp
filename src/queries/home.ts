@@ -130,12 +130,14 @@ export async function loadHome(db: SQLiteDatabase, at: number = Date.now()): Pro
 
   // --- categories -----------------------------------------------------------
   const [categories, limits] = await Promise.all([listCategories(db), effectiveLimits(db, month)]);
+  // Cut at now, like `spentCents`: anything dated later this month is in the
+  // hero's planned, so counting it here too would show it spent twice.
   const spentRows = await db.getAllAsync<{ category_id: string; spent: number }>(
     `SELECT category_id, IFNULL(SUM(-amount_cents), 0) AS spent FROM transactions
       WHERE deleted_at IS NULL AND amount_cents < 0 AND category_id IS NOT NULL
-        AND occurred_at >= ? AND occurred_at < ?
+        AND occurred_at >= ? AND occurred_at <= ?
       GROUP BY category_id`,
-    [monthStart, monthEnd],
+    [monthStart, at],
   );
   const spentByCategory = new Map(spentRows.map((r) => [r.category_id, r.spent]));
 
