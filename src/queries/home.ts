@@ -49,8 +49,8 @@ export async function loadHome(db: SQLiteDatabase, at: number = Date.now()): Pro
   const nextMonthEnd = startOfNextMonth(nextMonthStart);
 
   // --- spent, and what is already booked for later --------------------------
-  // Split purchases write every part up front, so a part dated the 25th is a
-  // row on the 10th. It is planned money, not spent money, until its day.
+  // Split purchases write every part up front, so next month's part is already
+  // a row. It is planned money, not spent money, until its date.
   const spentRow = await db.getFirstAsync<{ spent: number }>(
     `SELECT IFNULL(SUM(-amount_cents), 0) AS spent FROM transactions
       WHERE deleted_at IS NULL AND amount_cents < 0

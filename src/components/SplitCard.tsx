@@ -5,7 +5,7 @@ import { morph } from '../motion';
 import { tapSelect } from '../haptics';
 import { amountLabel } from '../format';
 import { clampMonths, MAX_SPLIT_MONTHS, splitAmounts } from '../db/split';
-import { addMonthsKeepingDay, MONTH_ABBR } from '../time';
+import { addMonths, MONTH_ABBR } from '../time';
 import { makeStyles, radius, useTheme } from '../theme';
 
 /** 'SEP 2026' — the ends of a split's span. */
@@ -102,7 +102,7 @@ export function SplitCard({
       {months > 1 ? (
         <Eyebrow size={10} tracking={0.06} alpha={0.36}>
           {`${amountLabel(perMonth)} a month · ${monthLabel(startAt)} – ${monthLabel(
-            addMonthsKeepingDay(startAt, months - 1),
+            addMonths(startAt, months - 1),
           )}`}
         </Eyebrow>
       ) : null}

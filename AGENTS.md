@@ -167,11 +167,14 @@ part is simply spending in its own month. Six rules hold it together:
   hands the remainder to the earliest parts (1000 over 3 is 3.34 + 3.33 + 3.33),
   so no cent is ever lost to rounding. The preview in the split card calls the same
   function, so the figure shown is the figure written.
-- **Later parts keep the day of the month, clamped.** `addMonthsKeepingDay`, not
-  `addMonths` — which lands on the 1st, right for a budget month and wrong here.
-  Every part is measured from the anchor rather than from its predecessor, so
-  31 Jan spread over 12 gives 12 distinct months with no drift, and 28 Feb does
-  not pull March back to the 28th.
+- **Later parts land on the 1st of their month, at midnight.** `partAt`: the
+  first part is the purchase and keeps its moment; part *i* is `addMonths(start, i)`.
+  The money has already left, so a later part is that month's share of it,
+  committed from the month's first moment — dated on the purchase's day of the
+  month instead, it read as *planned* on Home until mid-month and drew a jump
+  on Trends where nothing was spent. Migration v7 moved the parts written under
+  the old day-keeping rule. Measured from the anchor, so 31 Jan over 12 still
+  gives 12 distinct months.
 - **Changing the count reuses rows in place.** 12 months down to 6 rewrites six
   and soft-deletes six; it does not delete twelve and mint twelve fresh ids
   through the outbox. Only the surplus is retired, only the shortfall created.
@@ -285,12 +288,14 @@ crops Geist's ascenders on iOS. `primitives.tsx` clamps everything to
 splits the month at *now*, with the pure half in `queries/outlook.ts`:
 
 - **Spent** is money out dated up to now. A split writes every part up front, so
-  a part dated the 25th is a row on the 10th; it is *planned* until its day.
+  next month's part is already a row; it is *planned* until its month begins.
+  The category rows use the same cut, or that part would read as spent below
+  a hero that calls it planned.
 - **Planned** is those booked-ahead rows plus every recurring occurrence that
   hasn't been booked yet. `projectSchedules` walks from `next_due_at`, not from
   now: an occurrence that has come due but hasn't been booked has no row, so
   this is the only place it is counted. It spreads each occurrence with
-  `splitAmounts` and `addMonthsKeepingDay`, as the booking will, so the figure
+  `splitAmounts` and `partAt`, as the booking will, so the figure
   projected is the figure written. Next month's planned figure comes from the
   same list and is read against `monthlyBudgetCents` for next month.
 - **The forecast counts unplanned spending only**: `recurring_id IS NULL AND

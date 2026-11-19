@@ -1,9 +1,8 @@
 import type { RecurringRow } from '../db/types';
-import { splitAmounts } from '../db/split';
+import { partAt, splitAmounts } from '../db/split';
 import {
   MAX_CATCH_UP,
   addMonths,
-  addMonthsKeepingDay,
   daysInMonth,
   monthKey,
   occurrenceAt,
@@ -38,7 +37,7 @@ export type ProjectedPart = { recurringId: string; label: string; at: number; ce
  * Walks from `next_due_at`, not from now: an occurrence that has come due but
  * not been booked yet has no row, so nothing else counts it — it is still
  * planned money. Each occurrence is measured from the anchor and spread the way
- * `bookDueRecurring` will spread it (`splitAmounts`, day of the month kept), so
+ * `bookDueRecurring` will spread it (`splitAmounts`, later parts on the 1st), so
  * the figure projected is the figure that will be written.
  */
 export function projectSchedules(schedules: ScheduleInput[], from: number, until: number): ProjectedPart[] {
@@ -52,7 +51,7 @@ export function projectSchedules(schedules: ScheduleInput[], from: number, until
     let occurrence = s.next_due_at;
     for (let n = 0; occurrence < until && n < MAX_CATCH_UP; n++) {
       amounts.forEach((cents, i) => {
-        const at = addMonthsKeepingDay(occurrence, i);
+        const at = partAt(occurrence, i);
         if (at >= from && at < until) parts.push({ recurringId: s.id, label: s.label, at, cents: -cents });
       });
       k += 1;

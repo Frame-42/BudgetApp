@@ -69,15 +69,15 @@ describe('projectSchedules', () => {
     expect(parts.map((p) => new Date(p.at).getDate())).toEqual([2, 9, 16, 23, 30]);
   });
 
-  it('spreads each occurrence the way the booking will, spilling into next month', () => {
+  it('spreads each occurrence the way the booking will, later parts on the 1st', () => {
     const parts = projectSchedules(
       [schedule({ cadence: 'year', amount_cents: -1_000, split_months: 3, next_due_at: day(2026, 10, 20) })],
       novStart,
       janStart,
     );
-    expect(parts.map((p) => [new Date(p.at).getMonth(), p.cents])).toEqual([
-      [10, 334],
-      [11, 333],
+    expect(parts.map((p) => [new Date(p.at).getMonth(), new Date(p.at).getDate(), p.cents])).toEqual([
+      [10, 20, 334],
+      [11, 1, 333],
     ]);
   });
 

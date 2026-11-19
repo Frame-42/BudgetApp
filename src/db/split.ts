@@ -9,7 +9,7 @@ import {
   listSplitParts,
   type NewTransaction,
 } from '../repo/transactions';
-import { addMonthsKeepingDay, occurrenceIndex } from '../time';
+import { addMonths, occurrenceIndex } from '../time';
 
 /**
  * How far a transaction may be spread. Two years covers the things people
@@ -59,6 +59,18 @@ export function splitAmounts(totalCents: number, months: number): number[] {
 }
 
 /**
+ * When part `index` of a spread starting at `startAt` is dated. The first part
+ * is the purchase itself and keeps its moment; every later one is the start of
+ * its month. The money already left — a later part is that month's share of it,
+ * committed from the month's first moment, not a payment due on the day of the
+ * month the purchase happened to fall on. Midnight rather than the purchase's
+ * time of day, so Home counts it spent from the month's first hour.
+ */
+export function partAt(startAt: number, index: number): number {
+  return index === 0 ? startAt : addMonths(startAt, index);
+}
+
+/**
  * The part of a spread that lands in `at`'s month: the first when it started
  * this month, a later one when it started earlier, and 0 when it hasn't reached
  * this month or has already run out — what Add counts against what is left.
@@ -72,7 +84,7 @@ export function partInMonth(totalCents: number, months: number, startAt: number,
  * A new transaction, spread over `months` from its own date on — what the Add
  * screen writes, and what each occurrence of a recurring schedule books.
  * `amount_cents` is the signed total; the parts follow every rule the edit path
- * below does (remainder to the earliest parts, day of the month kept).
+ * below does (remainder to the earliest parts, later parts on the 1st).
  *
  * Opens no transaction of its own: `db/recurring.ts` books an occurrence and
  * advances its schedule as one write, and expo-sqlite's transactions don't nest.
@@ -89,7 +101,7 @@ export async function insertSplit(
     await createTransaction(db, {
       ...entry,
       amount_cents: amounts[i],
-      occurred_at: addMonthsKeepingDay(entry.occurred_at, i),
+      occurred_at: partAt(entry.occurred_at, i),
       split_id: splitId,
       split_index: splitId ? i : null,
     });
@@ -134,7 +146,7 @@ export async function saveTransactionSplit(db: SQLiteDatabase, edit: SplitEdit):
   const splitId = months > 1 ? (edit.splitId ?? newId()) : null;
 
   /* The first part keeps the date the money actually moved — or the one the
-     edit moved it to — and every later part is the same day of a later month. */
+     edit moved it to — and every later part is the 1st of a later month. */
   const anchor = edit.occurredAt ?? first.occurred_at;
 
   await db.withTransactionAsync(async () => {
@@ -143,7 +155,7 @@ export async function saveTransactionSplit(db: SQLiteDatabase, edit: SplitEdit):
         category_id: edit.categoryId,
         merchant: edit.merchant,
         amount_cents: amounts[i],
-        occurred_at: addMonthsKeepingDay(anchor, i),
+        occurred_at: partAt(anchor, i),
         split_id: splitId,
         split_index: splitId ? i : null,
       };
