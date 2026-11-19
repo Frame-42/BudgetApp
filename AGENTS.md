@@ -315,8 +315,8 @@ needed. Across six irregular months most days' median is 0, so the medians
 alone would understate the month, and a flat rate alone would hide the day the
 money usually goes. Planned money steps on its own date. The forecast narrows
 with the category selection; a month's presence does not (the day-0 rows in
-`loadTrends`), for the reason the bars don't. It is drawn as straight segments,
-not the spline, so a step stays a step.
+`loadTrends`), for the reason the bars don't. It is drawn with the same spline
+as the other lines, so a usual spending day reads as a steeper rise.
 
 **Spend and Trends sit outside the snapshot.** Both take query arguments — a
 period, a search term and a set of categories for Spend; a set of categories for

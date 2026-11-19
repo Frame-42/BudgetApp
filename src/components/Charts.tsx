@@ -51,9 +51,10 @@ const PLOT = { width: 320, top: 12, bottom: 100 };
  */
 const CURVE_TENSION = 6;
 
-function linePath(values: number[], days: number): string {
+/** `start` shifts the series along the day axis — the forecast begins at today, not the 1st. */
+function linePath(values: number[], days: number, start = 0): string {
   if (values.length === 0) return '';
-  const x = (i: number) => (days <= 1 ? 0 : (i / (days - 1)) * PLOT.width);
+  const x = (i: number) => (days <= 1 ? 0 : ((start + i) / (days - 1)) * PLOT.width);
   const y = (v: number) => PLOT.bottom - v * (PLOT.bottom - PLOT.top);
   const points = values.map((v, i) => ({ x: x(i), y: y(v) }));
 
@@ -78,19 +79,6 @@ function linePath(values: number[], days: number): string {
     d += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
   }
   return d;
-}
-
-/**
- * The forecast's path: straight day-to-day segments from `start` on. A spline
- * would round the day the money usually goes into a slope and overshoot past
- * it; the point of this line is to show that day.
- */
-function polylinePath(values: number[], start: number, days: number): string {
-  const x = (i: number) => (days <= 1 ? 0 : ((start + i) / (days - 1)) * PLOT.width);
-  const y = (v: number) => PLOT.bottom - v * (PLOT.bottom - PLOT.top);
-  return values
-    .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
-    .join(' ');
 }
 
 export function PaceChart({
@@ -121,7 +109,7 @@ export function PaceChart({
     : null;
 
   const forecastLine =
-    projection && projection.length > 1 ? polylinePath(projection, projectionStart, days) : '';
+    projection && projection.length > 1 ? linePath(projection, days, projectionStart) : '';
 
   return (
     <Svg viewBox="0 0 320 112" width="100%" height={112} fill="none" preserveAspectRatio="none">
