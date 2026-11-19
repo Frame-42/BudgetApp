@@ -57,7 +57,7 @@ them — change `app.json` and let the next prebuild regenerate.
 | `src/import/` | Bank-export reading: `csv.ts`, `rules.ts` (MCC + merchant names), `plan.ts` |
 | `src/export/` | CSV writing: `csv.ts` (the serializer), `share.ts` (file + share sheet) |
 | `src/state/BudgetProvider.tsx` | Opens the DB, recomputes on every change |
-| `src/devtools/` | `DevToolsContext.tsx` (the runtime on/off flag), `DevToolsPanel.tsx` (the dev-only actions card) |
+| `src/devtools/` | `DevToolsContext.tsx` (the runtime on/off flag), `DevToolsPanel.tsx` (the dev-only actions card), `sampleBankExport.ts` (the test bench's bank file) |
 | `src/sync/` | The `SyncEngine` interface and its no-op default |
 | `src/format.ts`, `src/time.ts` | Money and date formatting |
 
@@ -167,11 +167,14 @@ part is simply spending in its own month. Six rules hold it together:
   hands the remainder to the earliest parts (1000 over 3 is 3.34 + 3.33 + 3.33),
   so no cent is ever lost to rounding. The preview in the split card calls the same
   function, so the figure shown is the figure written.
-- **Later parts keep the day of the month, clamped.** `addMonthsKeepingDay`, not
-  `addMonths` — which lands on the 1st, right for a budget month and wrong here.
-  Every part is measured from the anchor rather than from its predecessor, so
-  31 Jan spread over 12 gives 12 distinct months with no drift, and 28 Feb does
-  not pull March back to the 28th.
+- **Later parts land on the 1st of their month, at midnight.** `partAt`: the
+  first part is the purchase and keeps its moment; part *i* is `addMonths(start, i)`.
+  The money has already left, so a later part is that month's share of it,
+  committed from the month's first moment — dated on the purchase's day of the
+  month instead, it read as *planned* on Home until mid-month and drew a jump
+  on Trends where nothing was spent. Migration v7 moved the parts written under
+  the old day-keeping rule. Measured from the anchor, so 31 Jan over 12 still
+  gives 12 distinct months.
 - **Changing the count reuses rows in place.** 12 months down to 6 rewrites six
   and soft-deletes six; it does not delete twelve and mint twelve fresh ids
   through the outbox. Only the surplus is retired, only the shortfall created.
@@ -203,7 +206,7 @@ rules:
 
 - **Occurrences are materialised, like split parts, but only once due.** A
   schedule has no end, so nothing is written ahead of time; `next_due_at` is
-  the only trace of the next one, which is what Home's "Next out" reads.
+  the only trace of the next one, and what Home projects forward as planned.
 - **It rolls forward on its own.** `bookDueRecurring` runs before the
   provider's first load and on every return to the foreground, and books every
   missed occurrence on its own date. No "mark as paid": a standing order leaves
@@ -281,6 +284,45 @@ updating. This has already been hit once.
 crops Geist's ascenders on iOS. `primitives.tsx` clamps everything to
 `size * MIN_LEADING` (1.15); leave the clamp in place.
 
+**Home's "Left to spend" is budget − spent − planned, not budget − booked.** `queries/home.ts`
+splits the month at *now*, with the pure half in `queries/outlook.ts`:
+
+- **Spent** is money out dated up to now. A split writes every part up front, so
+  next month's part is already a row; it is *planned* until its month begins.
+  The category rows use the same cut, or that part would read as spent below
+  a hero that calls it planned.
+- **Planned** is those booked-ahead rows plus every recurring occurrence that
+  hasn't been booked yet. `projectSchedules` walks from `next_due_at`, not from
+  now: an occurrence that has come due but hasn't been booked has no row, so
+  this is the only place it is counted. It spreads each occurrence with
+  `splitAmounts` and `partAt`, as the booking will, so the figure
+  projected is the figure written. Next month's planned figure comes from the
+  same list and is read against `monthlyBudgetCents` for next month.
+- **The forecast counts unplanned spending only**: `recurring_id IS NULL AND
+  IFNULL(split_index, 0) = 0`. Recurring rows and a split's later parts are
+  already in planned, so counting them in past months' tails would count rent
+  twice. A split's first part stays in, because that is the moment of purchase.
+  It is the median per-day rate of the last six finished months' tails (after
+  the same day of the month) times the days left. A month that recorded nothing
+  sits out, and with fewer than two months there is no forecast and the hero
+  falls back to the pace sentence.
+
+The ceiling is the budget, not income, because the importer drops incoming
+money. Trends' current-month bar still shows every booked row, later split
+parts included. That is a deliberate difference.
+
+**Trends draws the same forecast as a curve.** When the month in progress is
+picked, `PaceChart` continues it from today as a dimmed line (`pace.projection`).
+`forecastCurve` takes the line's *shape* from `dayMedians`: per day of the
+month, the median unplanned spend of the same basis months. Its *total* comes
+from `forecastTail`, so unfiltered it ends exactly on Home's figure. Both are
+needed. Across six irregular months most days' median is 0, so the medians
+alone would understate the month, and a flat rate alone would hide the day the
+money usually goes. Planned money steps on its own date. The forecast narrows
+with the category selection; a month's presence does not (the day-0 rows in
+`loadTrends`), for the reason the bars don't. It is drawn with the same spline
+as the other lines, so a usual spending day reads as a steeper rise.
+
 **Spend and Trends sit outside the snapshot.** Both take query arguments — a
 period, a search term and a set of categories for Spend; a set of categories for
 Trends — which the provider's argument-free "recompute everything" shape cannot
@@ -308,7 +350,7 @@ and the screen switches between those precomputed spans locally. `endOffset`
 is the displayed period's final month relative to today (never positive).
 Swiping pages by the selected span; historical months are completed months,
 not an artificial "current" month. The displayed `from`/`to` window also drives
-the Spend hand-off. The bars, pace and split reads run through one
+the Spend hand-off. The bars, pace, split and schedule reads run through one
 `withExclusiveTransactionAsync` transaction handle so they all describe one WAL
 snapshot on native; web uses `withTransactionAsync` because Expo does not support
 the exclusive API there. Don't move those statements back to independent calls.
@@ -412,6 +454,48 @@ row could not be changed and so nobody had chosen it.
 `app.json`'s `userInterfaceStyle` is `automatic`. A dev build compiled while it
 said `dark` has that baked into its Info.plist and will always report dark for
 System until it is rebuilt with `npm run ios`; Expo Go picks it up on a cold start.
+
+## The test bench
+
+"Load sample data" (`src/db/demo.ts`) is the test bench: every rule above that
+can only be judged against real rows has a case in it, dated relative to the
+day it is loaded. It reads best mid-month. It resets the database first, so it
+is never run against data anyone wants to keep. "Copy sample bank export"
+(`src/devtools/sampleBankExport.ts`) puts a bank file written against the
+loaded bench on the clipboard. Paste it into Import transactions to go through
+the importer; `devtools/__tests__/sampleBankExport-test.ts` checks that every
+importer rule fires on it. A new rule gets a case in the bench and a line in
+this table.
+
+| Case | Where to look |
+|---|---|
+| Ten recorded months; the eleventh back left empty | Trends 1Y: a grey, unpickable month; Home's forecast reads six months |
+| Budget 2,900 €, raised to 3,100 € six months back with Subscription 80 → 100 € | Trends bars against their own month's budget |
+| Health's limit cleared three months back (an explicit 0 row) | Home: Health shows a bare figure, no track |
+| This month raised to 3,400 € via `saveMonthBudget(scope: 'month')` | Home's budget; a 3,100 € pin on next month in `budgets` |
+| Transport over its limit; Shopping and Investment never limited | Home's category rows |
+| Archived "Travel" with spending 7–8 months back | Absent from Add's chips; labelled in the 1Y donut |
+| MacBook Air, 1,499 € over 6 months from 2 months back | Later parts on the 1st; this month's part spent, next month's in Home's next-month line |
+| Concert tickets, 100 € over 3 from this month | 33.34 + 33.33 + 33.33; next two months planned |
+| Winter jacket, split and fully elapsed | Spend: edit/delete takes the group |
+| Rent, monthly on the 27th, back-dated ten months | Booked by `bookDueRecurring`; until the 27th, planned and in Coming up |
+| Spotify, monthly on the 3rd | A booked occurrence every month |
+| Yoga class, weekly, next due in five days | Coming up; this week's planned |
+| Household insurance, yearly, spread over 12 months | A schedule whose occurrence is a split; parts on the 1st |
+| Old gym, stopped four months ago | Booked rows stay; their Spend sheet offers no "Stop repeating" |
+| Salary on the 25th, ATM withdrawal on the 12th | Income ignored by spending; uncategorised money out in spent but in no category row |
+| Imported rows with bank ids, two with foreign-amount notes, the last 10 days ago | Notes in Spend; "already imported" and "just what's new" on import |
+| Blue Bottle, 6.40 € typed in today | The bank file's fuzzy duplicate |
+| A row on the credit card; Savings and Credit card accounts | Net worth; balances that include future split parts |
+
+The bank file covers, in order: two lines already imported by id; a fuzzy
+duplicate; Galaxus three times (one review question); an unmapped MCC (Post);
+a descriptor with nothing matchable (its own question); the MCC table,
+including drugstore → Groceries; a foreign charge's note; memory over MCC
+(Coop Pronto's fuel code); memory over the bank's category column (Migros as
+"Shopping"); a category column we honour (Opernhaus); money in (dropped); a
+Saveback reward and the buy that invests it (both dropped); an ordinary fund
+buy (Investment); and one line repeated within the file.
 
 ## Verifying changes on this machine
 
@@ -539,6 +623,11 @@ the app keeps using its already-open connection and nothing appears to change:
 xcrun simctl terminate booted host.exp.Exponent
 xcrun simctl openurl booted "exp://127.0.0.1:8081"   # host is in the /reload response
 ```
+
+A `/reload` can also draw an SVG wrong: native views from the previous JS
+instance are reused, and a stroke that sets no `strokeDasharray` keeps whatever
+dash pattern its view last had — the Trends gridlines came out dashed this way
+once. If a chart looks off after a reload, cold-start before debugging it.
 
 A `/reload` can also land Expo Go in a broken runtime — "Cannot find native module
 'ExpoAsset'" on a red screen, with no dependency having changed. The cold start

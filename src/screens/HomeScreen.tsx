@@ -1,11 +1,15 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BudgetRing } from '../components/Charts';
+import { CommitmentBar } from '../components/Charts';
 import { Amount, Card, Divider, Eyebrow, HeroCard, StatusDot, T } from '../components/primitives';
 import type { HomeData } from '../queries/home';
-import { euroLabel, figure } from '../format';
+import { amountLabel, euroLabel, figure } from '../format';
+import { shortDate } from '../time';
 import { makeStyles, radius, useTheme } from '../theme';
+
+/** How many planned items the card names before it counts the rest. */
+const COMING_UP_ROWS = 4;
 
 /** 01 — Home: on track at a glance. */
 export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
@@ -15,6 +19,25 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
   const hour = new Date().getHours();
   const partOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
   const ahead = data.aheadOfPaceCents;
+  const over = data.freeCents < 0;
+  const forecast = data.forecast;
+
+  /* The forecast speaks first once there is history to read; before that, the
+     straight-line pace is the only honest thing to say. */
+  const status =
+    data.monthBudgetCents === 0
+      ? 'No budget for this month yet.'
+      : forecast
+        ? forecast.vsBudgetCents >= 0
+          ? `Likely to finish near ${euroLabel(forecast.landingCents)} — ${euroLabel(forecast.vsBudgetCents)} under budget.`
+          : `Likely to finish near ${euroLabel(forecast.landingCents)} — ${euroLabel(-forecast.vsBudgetCents)} over budget.`
+        : ahead >= 0
+          ? `On track — about ${euroLabel(ahead)} ahead of pace.`
+          : `Over pace — about ${euroLabel(-ahead)} beyond the run rate.`;
+
+  const shown = data.comingUp.slice(0, COMING_UP_ROWS);
+  const more = data.comingUp.length - shown.length;
+  const next = data.nextMonth;
 
   /** Today is the filled bar; the rest of the week stays dimmer than the past. */
   const barColor = (day: HomeData['week'][number]) =>
@@ -42,25 +65,42 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
       </View>
 
       <HeroCard style={styles.hero}>
-        <View style={styles.heroTop}>
-          <View style={{ gap: 9 }}>
-            <Eyebrow alpha={0.36}>Left to spend</Eyebrow>
-            <Amount value={figure(data.leftToSpendCents)} />
-            <T size={12.5} lineHeight={17.5} alpha={0.46}>
-              of {figure(data.monthBudgetCents)} € · {data.daysRemaining} days remaining
-            </T>
+        <View style={{ gap: 9 }}>
+          <Eyebrow alpha={0.36}>{over ? 'Over budget by' : 'Left to spend'}</Eyebrow>
+          <Amount value={figure(data.freeCents)} />
+          <T size={12.5} lineHeight={17.5} alpha={0.46}>
+            of {figure(data.monthBudgetCents)} € · {data.daysRemaining} days remaining
+          </T>
+        </View>
+        <View style={{ gap: 12 }}>
+          <CommitmentBar
+            spentCents={data.spentCents}
+            plannedCents={data.plannedCents}
+            budgetCents={data.monthBudgetCents}
+          />
+          <View style={styles.legend}>
+            {[
+              { label: 'Spent', cents: data.spentCents, swatch: color.mark },
+              { label: 'Planned', cents: data.plannedCents, swatch: mark(0.34) },
+              { label: 'Free', cents: Math.max(0, data.freeCents), swatch: color.track },
+            ].map((part) => (
+              <View key={part.label} style={{ gap: 4 }}>
+                <View style={styles.legendHead}>
+                  <View style={[styles.swatch, { backgroundColor: part.swatch }]} />
+                  <Eyebrow tracking={0.14}>{part.label}</Eyebrow>
+                </View>
+                <T weight="mono" size={12} alpha={0.7}>
+                  {euroLabel(part.cents)}
+                </T>
+              </View>
+            ))}
           </View>
-          <BudgetRing percent={data.percentUsed} />
         </View>
         <Divider />
         <View style={styles.statusRow}>
           <StatusDot />
           <T size={13} lineHeight={17.5} alpha={0.78} style={{ flex: 1 }}>
-            {data.monthBudgetCents === 0
-              ? 'No budget for this month yet.'
-              : ahead >= 0
-                ? `On track — about ${euroLabel(ahead)} ahead of pace.`
-                : `Over pace — about ${euroLabel(-ahead)} beyond the run rate.`}
+            {status}
           </T>
         </View>
       </HeroCard>
@@ -73,7 +113,7 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
               {figure(data.dailyPaceCents)} €
             </T>
             <T size={11.5} alpha={0.4}>
-              {figure(data.dailyAvailableCents)} € available
+              {figure(data.dailyFreeCents)} € free per day
             </T>
           </View>
         </Card>
@@ -139,19 +179,43 @@ export function HomeScreen({ data, name }: { data: HomeData; name: string }) {
         </View>
       </Card>
 
-      {data.nextOut ? (
-        <Card quiet style={styles.nextOut}>
-          <View style={{ gap: 4 }}>
-            <Eyebrow alpha={0.32} tracking={0.14}>
-              Next out
-            </Eyebrow>
-            <T size={13} alpha={0.8}>
-              {data.nextOut.label}
+      {data.comingUp.length > 0 || next.plannedCents > 0 ? (
+        <Card quiet style={styles.comingUp}>
+          <Eyebrow alpha={0.32} tracking={0.14}>
+            Coming up
+          </Eyebrow>
+          {shown.length > 0 ? (
+            <View style={{ gap: 10 }}>
+              {shown.map((item) => (
+                <View key={item.key} style={styles.rowBaseline}>
+                  <T size={13} alpha={0.8} numberOfLines={1} style={{ flex: 1 }}>
+                    {item.label} · {shortDate(item.at)}
+                  </T>
+                  <T size={13} alpha={0.6} tracking={-0.02}>
+                    {amountLabel(item.amountCents)}
+                  </T>
+                </View>
+              ))}
+              {more > 0 ? (
+                <T size={11.5} alpha={0.38}>
+                  +{more} more this month
+                </T>
+              ) : null}
+            </View>
+          ) : (
+            <T size={13} alpha={0.5}>
+              Nothing else planned this month.
             </T>
-          </View>
-          <T size={15} alpha={0.6} tracking={-0.02}>
-            {euroLabel(Math.abs(data.nextOut.amountCents))}
-          </T>
+          )}
+          {next.plannedCents > 0 ? (
+            <>
+              <Divider />
+              <T size={12} alpha={0.46}>
+                {next.label} · {euroLabel(next.plannedCents)} planned
+                {next.budgetCents ? ` of ${euroLabel(next.budgetCents)}` : ''}
+              </T>
+            </>
+          ) : null}
         </Card>
       ) : null}
     </View>
@@ -178,7 +242,9 @@ const useStyles = makeStyles(({ color, w }) => ({
     borderColor: w(0.09),
   },
   hero: { padding: 24, paddingBottom: 22, gap: 20 },
-  heroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  legend: { flexDirection: 'row', justifyContent: 'space-between' },
+  legendHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  swatch: { width: 6, height: 6, borderRadius: 3 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   statRow: { flexDirection: 'row', gap: 12 },
   statTile: { flex: 1, borderRadius: radius.tile, padding: 18, gap: 12, minHeight: 104 },
@@ -202,12 +268,5 @@ const useStyles = makeStyles(({ color, w }) => ({
     borderLeftWidth: 1.5,
     borderLeftColor: color.ink,
   },
-  nextOut: {
-    borderRadius: radius.tile,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  comingUp: { borderRadius: radius.tile, paddingVertical: 16, paddingHorizontal: 18, gap: 12 },
 }));

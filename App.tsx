@@ -85,6 +85,7 @@ function Phone() {
     runImport,
     exportCsv,
     loadSampleData,
+    copySampleBankExport,
     setAppearance,
   } = useBudget();
   const [tab, setTab] = useState(0);
@@ -229,7 +230,7 @@ function Phone() {
             }
           : null
       }
-      leftToSpendCents={data.home.leftToSpendCents}
+      leftToSpendCents={data.home.freeCents}
       daysRemaining={data.home.daysRemaining}
       onSubmit={submit}
       onCancel={() => {
@@ -263,6 +264,7 @@ function Phone() {
       onAppearanceChange={setAppearance}
       onReset={reset}
       onLoadSample={loadSampleData}
+      onCopySampleImport={copySampleBankExport}
     />,
   ];
 

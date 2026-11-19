@@ -83,6 +83,7 @@ describe('loadTrends', () => {
           { month: '2026-09', day: 2, total: 90 },
         ];
       }
+      if (source.includes('FROM recurring')) return [];
       if (source.includes('JOIN categories')) {
         return [
           { month: '2026-07', id: 'groceries', name: 'Groceries', alpha: 0.46, total: 100 },
@@ -106,11 +107,12 @@ describe('loadTrends', () => {
     const trends = await loadTrends(db, september, ['groceries']);
 
     expect(withExclusiveTransactionAsync).toHaveBeenCalledTimes(1);
-    expect(getAllAsync).toHaveBeenCalledTimes(3);
+    expect(getAllAsync).toHaveBeenCalledTimes(4);
     expect(getAllAsync.mock.calls.map(([, params]) => params)).toEqual([
       ['groceries', 'groceries', sourceStart, sourceEnd],
       ['groceries', sourceStart, sourceEnd],
       [sourceStart, sourceEnd],
+      [],
     ]);
     const aggregateSql = getAllAsync.mock.calls[0][0];
     expect(aggregateSql).toContain('SUM(CASE WHEN category_id IN (?) THEN 1 ELSE 0 END)');
@@ -186,5 +188,67 @@ describe('Trends period paging', () => {
     const page = (await loadTrends(database(), at, [], -3))[12];
     expect(page.newer?.endOffset).toBe(0);
     expect(page.newer?.months[11].key).toBe('2026-09');
+  });
+});
+
+describe('Trends forecast', () => {
+  const at = new Date(2026, 8, 10, 12).getTime();
+  const rent = {
+    id: 'rent',
+    label: 'Rent',
+    amount_cents: -50_000,
+    next_due_at: new Date(2026, 8, 25).getTime(),
+    anchor_at: null,
+    cadence: 'month',
+    split_months: 1,
+    category_id: 'housing',
+  };
+  function database(months: string[]) {
+    const txn = {
+      getAllAsync: jest.fn(async (sql: string) => {
+        if (sql.includes('COUNT(*) AS entries')) {
+          return [...months, '2026-09'].map((month) => ({ month, entries: 1, matches: 1, total: 1_000 }));
+        }
+        if (sql.includes("CAST(strftime('%d'")) {
+          return [
+            ...months.map((month) => ({ month, day: 20, total: 1_000, unplanned: 1_000 })),
+            { month: '2026-09', day: 3, total: 400, unplanned: 400 },
+          ];
+        }
+        if (sql.includes('FROM recurring')) return [rent];
+        return [];
+      }),
+    };
+    return {
+      withExclusiveTransactionAsync: async (read: (db: unknown) => Promise<void>) => read(txn),
+    } as unknown as SQLiteDatabase;
+  }
+
+  it('continues this month from today, steps on rent and the 20th, and leaves past months alone', async () => {
+    const page = (await loadTrends(database(['2026-07', '2026-08']), at))[3];
+    const september = page.months.find((m) => m.active)!;
+    const august = page.months.find((m) => m.key === '2026-08')!;
+
+    // 400 spent, 500 € rent on the 25th, and the median tail: 1,000 over July's
+    // and August's 21 days after the 10th, scaled to September's 20.
+    expect(september.projectedCents).toBe(400 + 50_000 + 952);
+    const projection = september.pace.projection!;
+    expect(projection).toHaveLength(30 - 10 + 1);
+    expect(projection[0]).toBeCloseTo(september.pace.current[september.pace.current.length - 1]);
+    // Flat until the 20th, where the usual spend lands.
+    expect(projection[9]).toBe(projection[0]);
+    expect(projection[10]).toBeGreaterThan(projection[9]);
+    expect(august.pace.projection).toBeNull();
+    expect(august.projectedCents).toBeNull();
+  });
+
+  it('draws no forecast from a single finished month', async () => {
+    const page = (await loadTrends(database(['2026-08']), at))[3];
+    expect(page.months.find((m) => m.active)?.pace.projection).toBeNull();
+  });
+
+  it('projects only schedules in the chosen categories', async () => {
+    const page = (await loadTrends(database(['2026-07', '2026-08']), at, ['groceries']))[3];
+    expect(page.months.find((m) => m.active)?.projectedCents).toBe(400 + 952);
   });
 });

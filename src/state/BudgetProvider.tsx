@@ -3,6 +3,8 @@ import { AppState } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { getDb, getMeta, resetDatabase, setMeta } from '../db/client';
 import { loadDemoData } from '../db/demo';
+import { readBenchFacts, sampleBankExport } from '../devtools/sampleBankExport';
+import * as Clipboard from 'expo-clipboard';
 import { commitImport } from '../db/import';
 import { exportTransactionsCsv } from '../db/export';
 import { exportFilename } from '../export/csv';
@@ -90,6 +92,8 @@ type BudgetContextValue = {
   exportCsv: () => Promise<number>;
   /** Development only: throw everything away and land on a populated month. */
   loadSampleData: () => Promise<void>;
+  /** Dev only: puts a bank export written against the sample data on the clipboard. */
+  copySampleBankExport: () => Promise<void>;
 };
 
 const BudgetContext = createContext<BudgetContextValue | null>(null);
@@ -277,6 +281,12 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     await load();
   }, [load]);
 
+  /** Read-only against the database; the import sheet's paste does the rest. */
+  const copySampleBankExport = useCallback(async () => {
+    const db = await getDb();
+    await Clipboard.setStringAsync(sampleBankExport(await readBenchFacts(db)));
+  }, []);
+
   const reset = useCallback(async () => {
     await resetDatabase();
     await load();
@@ -299,6 +309,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         runImport,
         exportCsv,
         loadSampleData,
+        copySampleBankExport,
       }}
     >
       {children}

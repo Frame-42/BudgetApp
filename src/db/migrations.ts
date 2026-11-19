@@ -212,10 +212,27 @@ UPDATE categories
 `;
 
 /**
+ * A split's later parts move to the start of their month (`partAt` in
+ * `db/split.ts`). They used to keep the purchase's day of the month, which left
+ * money that had already been spent reading as planned until mid-month. The
+ * first part stays put — that is the purchase itself. Local midnight, computed
+ * in the device's own time zone as everywhere else; stamped like any other
+ * write so sync sees a newer row, and rows already on the 1st are left alone.
+ */
+const PART_MONTH_START = `CAST(strftime('%s', occurred_at / 1000, 'unixepoch', 'localtime', 'start of month', 'utc') AS INTEGER) * 1000`;
+const V7 = `
+UPDATE transactions
+   SET occurred_at = ${PART_MONTH_START},
+       updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+ WHERE split_index > 0 AND deleted_at IS NULL
+   AND occurred_at <> ${PART_MONTH_START};
+`;
+
+/**
  * Ordered, append-only. To change the schema, add a step — never edit one that
  * has shipped, because devices in the field have already run it.
  */
-export const MIGRATIONS: string[] = [V1, V2, V3, V4, V5, V6];
+export const MIGRATIONS: string[] = [V1, V2, V3, V4, V5, V6, V7];
 
 /** Applies whatever hasn't run yet, tracked in PRAGMA user_version. */
 export async function migrate(db: SQLiteDatabase): Promise<void> {

@@ -168,7 +168,7 @@ shadows; the only glow in the app is the status dot's.
 | Page ground | `Background` | Once per screen tree, and again inside full-screen Modals |
 | Hero | `HeroCard` | The one lead tile on a screen |
 | Card | `Card` | Standard content |
-| Quiet card | `Card quiet` | Secondary content: "Next out", insights, sign out |
+| Quiet card | `Card quiet` | Secondary content: "Coming up", insights, sign out |
 | Field | `FieldSurface` | Any container around a `TextField` |
 | Sheet | `Sheet` | Actions and pickers over the current screen |
 | Divider | `Divider` | A 1pt rule that fades out to the right |
@@ -200,8 +200,11 @@ shadows; the only glow in the app is the status dot's.
 
 - `TransactionRow` — one line of the Spend list.
 - `StatusDot` — the 6pt accent dot with its glow. The one spot of colour.
-- Charts (`Charts.tsx`): `BudgetRing`, `PaceChart` with its solid and dashed
-  `LegendRule`, and `SplitDonut`.
+- Charts (`Charts.tsx`): `CommitmentBar` (Home's spent / planned / free rail;
+  planned is the mark at a lower alpha, not a new hue), `PaceChart` with its solid and dashed
+  `LegendRule`, and `SplitDonut`. On the month in progress the solid line carries
+  on past today as the forecast: the same stroke and the same smoothed path at
+  `mark(.3)`. It has no legend row. The dashed comparison stays the chart's only broken line.
 - Icons (`Icons.tsx`) — hand-drawn line icons taking `color` and `size`. There
   is no icon library.
 
@@ -257,7 +260,7 @@ Three, all through `src/haptics.ts`, all fire-and-forget:
 
 | Screen | Leads with | Notes |
 |---|---|---|
-| Home | Left to spend this month | Budget ring, daily pace, this week's bars, category limits, "Next out" |
+| Home | Left to spend this month | Spent / planned / free rail, month-end forecast, daily pace, this week's bars, category limits, "Coming up" |
 | Spend | The transaction list | Scrolls itself (`SectionList`); month stepper, search, category filter |
 | Add | The amount, on the keypad | Category chips, a name field, the "Advanced" pill |
 | Trends | The span's monthly average | Month bars, pace curve, the donut; hands its scope to Spend |

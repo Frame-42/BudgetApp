@@ -1,12 +1,16 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
+import type { RecurringRow } from '../db/types';
+import { listRecurring } from '../repo/recurring';
 import {
   MONTH_ABBR,
   addMonths,
   daysInMonth,
   monthKey,
+  startOfMonth,
   startOfNextMonth,
 } from '../time';
+import { dayMedians, forecastCurve, forecastTail, pastTails, projectSchedules, type DayRow } from './outlook';
 
 export type Share = {
   name: string;
@@ -57,7 +61,19 @@ export type MonthStat = {
    * against. All three share one peak, so switching the comparison moves the
    * dashed line without shifting the solid one.
    */
-  pace: { current: number[]; previous: number[]; average: number[] };
+  pace: {
+    current: number[];
+    previous: number[];
+    average: number[];
+    /**
+     * The month in progress only: today's point, then one per day to the end,
+     * along the forecast. Null for every other month, and before there are two
+     * finished months to read.
+     */
+    projection: number[] | null;
+  };
+  /** Where the projection lands, in cents; null whenever `projection` is. */
+  projectedCents: number | null;
   /** How much lighter this month runs than each comparison, at the same point. */
   paceDeltaCents: { previous: number; average: number };
   /** The month the dashed line is drawn from — 'JUL' for August. */
@@ -189,13 +205,14 @@ export async function loadTrends(
     matches: number;
     total: number;
   }[] = [];
-  let daily: { month: string; day: number; total: number }[] = [];
+  let daily: { month: string; day: number; total: number; unplanned: number }[] = [];
   let splitRows: ({ month: string } & SplitRow)[] = [];
+  let schedules: RecurringRow[] = [];
 
   const read = async (txn: SQLiteDatabase) => {
     // Counted over every transaction, not just spending, so a month that holds
     // only income still counts as a month that was recorded.
-    [rows, daily, splitRows] = await Promise.all([
+    [rows, daily, splitRows, schedules] = await Promise.all([
       txn.getAllAsync<{
         month: string;
         entries: number;
@@ -211,10 +228,14 @@ export async function loadTrends(
         GROUP BY month`,
         [...categoryIds, ...categoryIds, sourceStart, sourceEnd],
       ),
-      txn.getAllAsync<{ month: string; day: number; total: number }>(
+      // `unplanned` leaves out recurring occurrences and a split's later parts,
+      // which the forecast books as planned steps instead — see `outlook.ts`.
+      txn.getAllAsync<{ month: string; day: number; total: number; unplanned: number }>(
         `SELECT strftime('%Y-%m', occurred_at / 1000, 'unixepoch', 'localtime') AS month,
               CAST(strftime('%d', occurred_at / 1000, 'unixepoch', 'localtime') AS INTEGER) AS day,
-              IFNULL(SUM(-amount_cents), 0) AS total
+              IFNULL(SUM(-amount_cents), 0) AS total,
+              IFNULL(SUM(CASE WHEN recurring_id IS NULL AND IFNULL(split_index, 0) = 0
+                              THEN -amount_cents ELSE 0 END), 0) AS unplanned
          FROM transactions
         WHERE deleted_at IS NULL AND amount_cents < 0 AND ${chosen}
           AND occurred_at >= ? AND occurred_at < ?
@@ -231,6 +252,7 @@ export async function loadTrends(
         GROUP BY month, c.id`,
         [sourceStart, sourceEnd],
       ),
+      listRecurring(txn),
     ]);
   };
 
@@ -263,6 +285,45 @@ export async function loadTrends(
     }
     return series;
   };
+
+  // --- forecast: the rest of the month in progress ----------------------------
+  /*
+   * Built once, for whichever view holds this month. Narrowed like every other
+   * figure here: the day rows already carry the category predicate, and only
+   * schedules in the chosen categories are projected. Presence is not narrowed —
+   * a recorded month with no Groceries is a month of no Groceries, so each
+   * recorded month gets a day-0 row that marks it present and spends nothing.
+   */
+  const thisMonth = monthKey(at);
+  const today = new Date(at).getDate();
+  const totalDays = daysInMonth(at);
+  const dayRows: DayRow[] = [
+    ...[...recorded].map((month) => ({ month, day: 0, entries: 1, unplannedCents: 0 })),
+    ...daily.map((r) => ({ month: r.month, day: r.day, entries: 0, unplannedCents: r.unplanned })),
+  ];
+  const tailCents = forecastTail(pastTails(dayRows, at), totalDays - today);
+  const projectionCents = (() => {
+    if (tailCents === null) return null;
+    /* Rows already booked for later this month — a split's later parts. */
+    const plannedByDay = new Map<number, number>(
+      daily.filter((r) => r.month === thisMonth && r.day > today).map((r) => [r.day, r.total]),
+    );
+    const inScope = schedules.filter(
+      (s) => categoryIds.length === 0 || (s.category_id !== null && categoryIds.includes(s.category_id)),
+    );
+    for (const part of projectSchedules(inScope, startOfMonth(at), startOfNextMonth(at))) {
+      /* Due but not booked yet: it leaves the account on the next day the chart has. */
+      const day = Math.min(totalDays, Math.max(today + 1, new Date(part.at).getDate()));
+      plannedByDay.set(day, (plannedByDay.get(day) ?? 0) + part.cents);
+    }
+    return forecastCurve({
+      standing: cumulative(at)[today - 1] ?? 0,
+      plannedByDay,
+      medians: dayMedians(dayRows, at),
+      tailCents,
+      today,
+    });
+  })();
 
   // --- where it goes, per month ----------------------------------------------
   /* Deliberately unfiltered: selecting a category must not redraw the donut as
@@ -356,7 +417,8 @@ export async function loadTrends(
       // The in-progress month stops at today; a finished one runs to its last day.
       const current = curve(stamp, month.active);
       const previous = cumulative(addMonths(stamp, -1));
-      const scale = Math.max(1, ...current, ...previous, ...averageSeries);
+      const projection = month.active ? projectionCents : null;
+      const scale = Math.max(1, ...current, ...previous, ...averageSeries, ...(projection ?? []));
       const day = current.length;
       const standing = current[current.length - 1] ?? 0;
       /* Where a comparison had got to by the same day; a shorter month holds at its total. */
@@ -386,7 +448,9 @@ export async function loadTrends(
           current: current.map((v) => v / scale),
           previous: previous.map((v) => v / scale),
           average: averageSeries.map((v) => v / scale),
+          projection: projection ? projection.map((v) => v / scale) : null,
         },
+        projectedCents: projection ? projection[projection.length - 1] : null,
         // Same span of both curves, so a short February never reads as a saving.
         paceDeltaCents: {
           previous: sameDay(previous) - standing,

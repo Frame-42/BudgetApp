@@ -14,7 +14,7 @@ import { dueOccurrences, occurrenceAt } from '../time';
  * then need to know nothing about schedules. Unlike a split, which is finite and
  * written whole up front, a schedule has no end, so each occurrence is booked
  * only once its date arrives. Until then the only trace of it is `next_due_at`,
- * which is what Home's "Next out" tile reads.
+ * which Home projects forward (`queries/outlook.ts`) to count it as planned.
  *
  * Here rather than in `repo/` for the reason `split.ts` is: each step is a script
  * across two tables that has to land whole or not at all.

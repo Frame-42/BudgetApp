@@ -182,6 +182,8 @@ export function TrendsScreen({
   const paceCurrent = selected ? selected.pace.current : data.averagePace;
   const pacePrevious =
     selected && compare ? (compare === 'average' ? selected.pace.average : selected.pace.previous) : [];
+  /* Only the month in progress has a rest of the month to forecast. */
+  const paceProjection = selected?.pace.projection ?? null;
 
   return (
     <View style={styles.screen}>
@@ -317,6 +319,8 @@ export function TrendsScreen({
           ) : (
             <Eyebrow tracking={0.14}>{data.averageIsPartial ? 'This month' : 'Average month'}</Eyebrow>
           )}
+          {/* No row for the forecast: a faint continuation growing out of today's
+              dot says what it is, and a third legend row is what made it busy. */}
           {selected && compare ? (
             <View style={{ gap: 6, alignItems: 'flex-end' }}>
               <View style={styles.legendRow}>
@@ -334,7 +338,7 @@ export function TrendsScreen({
             </View>
           ) : null}
         </View>
-        <PaceChart current={paceCurrent} previous={pacePrevious} />
+        <PaceChart current={paceCurrent} previous={pacePrevious} projection={paceProjection} />
         <Divider />
         <T size={12.5} lineHeight={17.5} alpha={0.7}>
           {paceLine(data, selected, compare)}

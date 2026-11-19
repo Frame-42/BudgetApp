@@ -5,36 +5,33 @@ import { makeStyles, useTheme } from '../theme';
 import { T } from './primitives';
 
 /**
- * Home hero ring — 61% of the month's budget used.
- * Geometry (r=32, stroke 5, dasharray 201) is taken straight from the design.
+ * Home hero — where the month's budget stands: spent, then planned, then free.
+ * Planned is the same mark at a lower alpha rather than a new hue — it is money
+ * already spoken for, not a different kind of money. Once spent and planned run
+ * past the budget the rail is scaled to their sum, and a hairline of page ink
+ * marks where the budget ended.
  */
-export function BudgetRing({ percent }: { percent: number }) {
+export function CommitmentBar({
+  spentCents,
+  plannedCents,
+  budgetCents,
+}: {
+  spentCents: number;
+  plannedCents: number;
+  budgetCents: number;
+}) {
   const styles = useStyles();
-  const { color, w } = useTheme();
-  const CIRC = 201;
+  const { color, mark } = useTheme();
+  const committed = spentCents + plannedCents;
+  const whole = Math.max(1, budgetCents, committed);
+  const pct = (cents: number) => `${(Math.max(0, cents) / whole) * 100}%` as const;
   return (
-    <View style={styles.ring74}>
-      <Svg width={74} height={74} viewBox="0 0 74 74">
-        <G rotation={-90} origin="37, 37">
-          <Circle cx={37} cy={37} r={32} fill="none" stroke={w(0.09)} strokeWidth={5} />
-          <Circle
-            cx={37}
-            cy={37}
-            r={32}
-            fill="none"
-            stroke={color.mark}
-            strokeWidth={5}
-            strokeLinecap="round"
-            strokeDasharray={CIRC}
-            strokeDashoffset={CIRC * (1 - percent / 100)}
-          />
-        </G>
-      </Svg>
-      <View style={styles.ringCenter}>
-        <T weight="medium" size={14} tracking={-0.02}>
-          {percent}%
-        </T>
-      </View>
+    <View style={[styles.rail, { backgroundColor: color.track }]}>
+      <View style={{ width: pct(spentCents), backgroundColor: color.mark }} />
+      <View style={{ width: pct(plannedCents), backgroundColor: mark(0.34) }} />
+      {committed > budgetCents && budgetCents > 0 ? (
+        <View style={[styles.railLimit, { left: pct(budgetCents), backgroundColor: color.ink }]} />
+      ) : null}
     </View>
   );
 }
@@ -54,9 +51,10 @@ const PLOT = { width: 320, top: 12, bottom: 100 };
  */
 const CURVE_TENSION = 6;
 
-function linePath(values: number[], days: number): string {
+/** `start` shifts the series along the day axis — the forecast begins at today, not the 1st. */
+function linePath(values: number[], days: number, start = 0): string {
   if (values.length === 0) return '';
-  const x = (i: number) => (days <= 1 ? 0 : (i / (days - 1)) * PLOT.width);
+  const x = (i: number) => (days <= 1 ? 0 : ((start + i) / (days - 1)) * PLOT.width);
   const y = (v: number) => PLOT.bottom - v * (PLOT.bottom - PLOT.top);
   const points = values.map((v, i) => ({ x: x(i), y: y(v) }));
 
@@ -83,15 +81,35 @@ function linePath(values: number[], days: number): string {
   return d;
 }
 
-export function PaceChart({ current, previous }: { current: number[]; previous: number[] }) {
+export function PaceChart({
+  current,
+  previous,
+  projection,
+}: {
+  current: number[];
+  previous: number[];
+  /** Today's point, then one per day to the month's end. */
+  projection?: number[] | null;
+}) {
   const { color, w, fg, mark } = useTheme();
-  const days = Math.max(current.length, previous.length, 2);
+  /* With a forecast the axis is the whole month, so today sits where it falls. */
+  const projectionStart = Math.max(0, current.length - 1);
+  const days = Math.max(
+    current.length,
+    previous.length,
+    projection?.length ? projectionStart + projection.length : 0,
+    2,
+  );
+
   const head = current.length
     ? {
         x: ((current.length - 1) / (days - 1)) * PLOT.width,
         y: PLOT.bottom - current[current.length - 1] * (PLOT.bottom - PLOT.top),
       }
     : null;
+
+  const forecastLine =
+    projection && projection.length > 1 ? linePath(projection, days, projectionStart) : '';
 
   return (
     <Svg viewBox="0 0 320 112" width="100%" height={112} fill="none" preserveAspectRatio="none">
@@ -103,7 +121,28 @@ export function PaceChart({ current, previous }: { current: number[]; previous: 
         strokeDasharray="4 5"
         strokeLinecap="round"
       />
-      <Path d={linePath(current, days)} stroke={color.mark} strokeWidth={2.1} strokeLinecap="round" />
+      {/*
+        The forecast is this month's own line carried on past today, at a lower
+        alpha — the comparison stays the only broken line on the chart, so the
+        two never read as variations of one style.
+
+        Always mounted and emptied rather than removed: Trends wraps a month
+        pick in a LayoutAnimation, whose delete step would fade an unmounted
+        path out over 280ms after the other lines had redrawn.
+      */}
+      <Path
+        d={forecastLine}
+        stroke={mark(0.3)}
+        strokeWidth={2.1}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d={linePath(current, days)}
+        stroke={color.mark}
+        strokeWidth={2.1}
+        strokeLinecap="round"
+      />
       {head ? (
         <>
           <Circle cx={head.x} cy={head.y} r={3.4} fill={color.mark} />
@@ -297,8 +336,8 @@ export function SplitDonut({
 const fill = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } as const;
 
 const useStyles = makeStyles(() => ({
-  ring74: { width: 74, height: 74 },
-  ringCenter: { ...fill, alignItems: 'center', justifyContent: 'center' },
+  rail: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden' },
+  railLimit: { position: 'absolute', top: 0, bottom: 0, width: 1.5 },
   donut: { width: DONUT_BOX, height: DONUT_BOX },
   donutCenter: {
     ...fill,
