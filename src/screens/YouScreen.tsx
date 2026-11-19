@@ -34,6 +34,7 @@ export function YouScreen({
   onAppearanceChange,
   onReset,
   onLoadSample,
+  onCopySampleImport,
 }: {
   data: YouData;
   categories: { id: string; name: string }[];
@@ -44,6 +45,7 @@ export function YouScreen({
   onAppearanceChange: (appearance: Appearance) => void;
   onReset: () => void;
   onLoadSample: () => void;
+  onCopySampleImport: () => Promise<void>;
 }) {
   const styles = useStyles();
   const { w, fg } = useTheme();
@@ -209,7 +211,7 @@ export function YouScreen({
       </Card>
 
       {__DEV__ && devToolsEnabled ? (
-        <DevToolsPanel onReset={onReset} onLoadSample={onLoadSample} />
+        <DevToolsPanel onReset={onReset} onLoadSample={onLoadSample} onCopySampleImport={onCopySampleImport} />
       ) : null}
 
       {/* Actions, not settings — so tiles of their own rather than more rows in

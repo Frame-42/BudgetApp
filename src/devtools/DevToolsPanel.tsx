@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import { Card, Eyebrow, T } from '../components/primitives';
 import { makeStyles } from '../theme';
 
@@ -14,14 +14,26 @@ type Tool = { name: string; onPress: () => void };
 export function DevToolsPanel({
   onReset,
   onLoadSample,
+  onCopySampleImport,
 }: {
   onReset: () => void;
   onLoadSample: () => void;
+  onCopySampleImport: () => Promise<void>;
 }) {
   const styles = useStyles();
   const tools: Tool[] = [
     { name: 'Reset to first run', onPress: onReset },
     { name: 'Load sample data', onPress: onLoadSample },
+    {
+      // Written against the sample data, so load that first.
+      name: 'Copy sample bank export',
+      onPress: () => {
+        onCopySampleImport().then(
+          () => Alert.alert('Copied', 'Open Import transactions below and paste it from the clipboard.'),
+          (error: unknown) => Alert.alert('Could not copy', String(error)),
+        );
+      },
+    },
   ];
 
   return (

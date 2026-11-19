@@ -85,6 +85,7 @@ function Phone() {
     runImport,
     exportCsv,
     loadSampleData,
+    copySampleBankExport,
     setAppearance,
   } = useBudget();
   const [tab, setTab] = useState(0);
@@ -263,6 +264,7 @@ function Phone() {
       onAppearanceChange={setAppearance}
       onReset={reset}
       onLoadSample={loadSampleData}
+      onCopySampleImport={copySampleBankExport}
     />,
   ];
 

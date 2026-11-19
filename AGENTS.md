@@ -57,7 +57,7 @@ them — change `app.json` and let the next prebuild regenerate.
 | `src/import/` | Bank-export reading: `csv.ts`, `rules.ts` (MCC + merchant names), `plan.ts` |
 | `src/export/` | CSV writing: `csv.ts` (the serializer), `share.ts` (file + share sheet) |
 | `src/state/BudgetProvider.tsx` | Opens the DB, recomputes on every change |
-| `src/devtools/` | `DevToolsContext.tsx` (the runtime on/off flag), `DevToolsPanel.tsx` (the dev-only actions card) |
+| `src/devtools/` | `DevToolsContext.tsx` (the runtime on/off flag), `DevToolsPanel.tsx` (the dev-only actions card), `sampleBankExport.ts` (the test bench's bank file) |
 | `src/sync/` | The `SyncEngine` interface and its no-op default |
 | `src/format.ts`, `src/time.ts` | Money and date formatting |
 
@@ -454,6 +454,48 @@ row could not be changed and so nobody had chosen it.
 `app.json`'s `userInterfaceStyle` is `automatic`. A dev build compiled while it
 said `dark` has that baked into its Info.plist and will always report dark for
 System until it is rebuilt with `npm run ios`; Expo Go picks it up on a cold start.
+
+## The test bench
+
+"Load sample data" (`src/db/demo.ts`) is the test bench: every rule above that
+can only be judged against real rows has a case in it, dated relative to the
+day it is loaded. It reads best mid-month. It resets the database first, so it
+is never run against data anyone wants to keep. "Copy sample bank export"
+(`src/devtools/sampleBankExport.ts`) puts a bank file written against the
+loaded bench on the clipboard. Paste it into Import transactions to go through
+the importer; `devtools/__tests__/sampleBankExport-test.ts` checks that every
+importer rule fires on it. A new rule gets a case in the bench and a line in
+this table.
+
+| Case | Where to look |
+|---|---|
+| Ten recorded months; the eleventh back left empty | Trends 1Y: a grey, unpickable month; Home's forecast reads six months |
+| Budget 2,900 €, raised to 3,100 € six months back with Subscription 80 → 100 € | Trends bars against their own month's budget |
+| Health's limit cleared three months back (an explicit 0 row) | Home: Health shows a bare figure, no track |
+| This month raised to 3,400 € via `saveMonthBudget(scope: 'month')` | Home's budget; a 3,100 € pin on next month in `budgets` |
+| Transport over its limit; Shopping and Investment never limited | Home's category rows |
+| Archived "Travel" with spending 7–8 months back | Absent from Add's chips; labelled in the 1Y donut |
+| MacBook Air, 1,499 € over 6 months from 2 months back | Later parts on the 1st; this month's part spent, next month's in Home's next-month line |
+| Concert tickets, 100 € over 3 from this month | 33.34 + 33.33 + 33.33; next two months planned |
+| Winter jacket, split and fully elapsed | Spend: edit/delete takes the group |
+| Rent, monthly on the 27th, back-dated ten months | Booked by `bookDueRecurring`; until the 27th, planned and in Coming up |
+| Spotify, monthly on the 3rd | A booked occurrence every month |
+| Yoga class, weekly, next due in five days | Coming up; this week's planned |
+| Household insurance, yearly, spread over 12 months | A schedule whose occurrence is a split; parts on the 1st |
+| Old gym, stopped four months ago | Booked rows stay; their Spend sheet offers no "Stop repeating" |
+| Salary on the 25th, ATM withdrawal on the 12th | Income ignored by spending; uncategorised money out in spent but in no category row |
+| Imported rows with bank ids, two with foreign-amount notes, the last 10 days ago | Notes in Spend; "already imported" and "just what's new" on import |
+| Blue Bottle, 6.40 € typed in today | The bank file's fuzzy duplicate |
+| A row on the credit card; Savings and Credit card accounts | Net worth; balances that include future split parts |
+
+The bank file covers, in order: two lines already imported by id; a fuzzy
+duplicate; Galaxus three times (one review question); an unmapped MCC (Post);
+a descriptor with nothing matchable (its own question); the MCC table,
+including drugstore → Groceries; a foreign charge's note; memory over MCC
+(Coop Pronto's fuel code); memory over the bank's category column (Migros as
+"Shopping"); a category column we honour (Opernhaus); money in (dropped); a
+Saveback reward and the buy that invests it (both dropped); an ordinary fund
+buy (Investment); and one line repeated within the file.
 
 ## Verifying changes on this machine
 
