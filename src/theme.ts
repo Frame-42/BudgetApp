@@ -80,7 +80,7 @@ function palette(scheme: Scheme) {
         /** Flat tiles. */
         tile: w(0.04),
         tileBorder: w(0.06),
-        /** Quiet tiles (Next out, insight, sign out). */
+        /** Quiet tiles (Coming up, insight, sign out). */
         tileQuiet: w(0.03),
         tileQuietBorder: w(0.055),
 

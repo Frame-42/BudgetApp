@@ -213,7 +213,7 @@ export async function loadDemoData(db: SQLiteDatabase): Promise<void> {
     }
 
     // --- current month --------------------------------------------------------
-    // Rent for this month is still ahead (the "Next out" tile), so it is absent.
+    // Rent for this month is still ahead (the "Coming up" card), so it is absent.
     const fixedByCategory = new Map<string, number>();
     for (const item of RECENT) {
       const when = startOfDay(today.getTime() + item.day * 86_400_000) + 11 * 3_600_000;

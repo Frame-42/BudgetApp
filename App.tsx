@@ -229,7 +229,7 @@ function Phone() {
             }
           : null
       }
-      leftToSpendCents={data.home.leftToSpendCents}
+      leftToSpendCents={data.home.freeCents}
       daysRemaining={data.home.daysRemaining}
       onSubmit={submit}
       onCancel={() => {

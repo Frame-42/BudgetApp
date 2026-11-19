@@ -180,7 +180,7 @@ export function dayLabel(ts: number, reference: number = Date.now()): string {
   return `${weekday} ${d.getDate()} ${month.charAt(0)}${month.slice(1).toLowerCase()}`;
 }
 
-/** 'Sep 1' — the "Next out" tile. */
+/** 'Sep 1' — the "Coming up" card's dates. */
 export const shortDate = (ts: number): string => {
   const d = new Date(ts);
   const month = MONTH_ABBR[d.getMonth()];

@@ -5,36 +5,33 @@ import { makeStyles, useTheme } from '../theme';
 import { T } from './primitives';
 
 /**
- * Home hero ring — 61% of the month's budget used.
- * Geometry (r=32, stroke 5, dasharray 201) is taken straight from the design.
+ * Home hero — where the month's budget stands: spent, then planned, then free.
+ * Planned is the same mark at a lower alpha rather than a new hue — it is money
+ * already spoken for, not a different kind of money. Once spent and planned run
+ * past the budget the rail is scaled to their sum, and a hairline of page ink
+ * marks where the budget ended.
  */
-export function BudgetRing({ percent }: { percent: number }) {
+export function CommitmentBar({
+  spentCents,
+  plannedCents,
+  budgetCents,
+}: {
+  spentCents: number;
+  plannedCents: number;
+  budgetCents: number;
+}) {
   const styles = useStyles();
-  const { color, w } = useTheme();
-  const CIRC = 201;
+  const { color, mark } = useTheme();
+  const committed = spentCents + plannedCents;
+  const whole = Math.max(1, budgetCents, committed);
+  const pct = (cents: number) => `${(Math.max(0, cents) / whole) * 100}%` as const;
   return (
-    <View style={styles.ring74}>
-      <Svg width={74} height={74} viewBox="0 0 74 74">
-        <G rotation={-90} origin="37, 37">
-          <Circle cx={37} cy={37} r={32} fill="none" stroke={w(0.09)} strokeWidth={5} />
-          <Circle
-            cx={37}
-            cy={37}
-            r={32}
-            fill="none"
-            stroke={color.mark}
-            strokeWidth={5}
-            strokeLinecap="round"
-            strokeDasharray={CIRC}
-            strokeDashoffset={CIRC * (1 - percent / 100)}
-          />
-        </G>
-      </Svg>
-      <View style={styles.ringCenter}>
-        <T weight="medium" size={14} tracking={-0.02}>
-          {percent}%
-        </T>
-      </View>
+    <View style={[styles.rail, { backgroundColor: color.track }]}>
+      <View style={{ width: pct(spentCents), backgroundColor: color.mark }} />
+      <View style={{ width: pct(plannedCents), backgroundColor: mark(0.34) }} />
+      {committed > budgetCents && budgetCents > 0 ? (
+        <View style={[styles.railLimit, { left: pct(budgetCents), backgroundColor: color.ink }]} />
+      ) : null}
     </View>
   );
 }
@@ -297,8 +294,8 @@ export function SplitDonut({
 const fill = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } as const;
 
 const useStyles = makeStyles(() => ({
-  ring74: { width: 74, height: 74 },
-  ringCenter: { ...fill, alignItems: 'center', justifyContent: 'center' },
+  rail: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden' },
+  railLimit: { position: 'absolute', top: 0, bottom: 0, width: 1.5 },
   donut: { width: DONUT_BOX, height: DONUT_BOX },
   donutCenter: {
     ...fill,

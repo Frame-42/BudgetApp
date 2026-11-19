@@ -203,7 +203,7 @@ rules:
 
 - **Occurrences are materialised, like split parts, but only once due.** A
   schedule has no end, so nothing is written ahead of time; `next_due_at` is
-  the only trace of the next one, which is what Home's "Next out" reads.
+  the only trace of the next one, and what Home projects forward as planned.
 - **It rolls forward on its own.** `bookDueRecurring` runs before the
   provider's first load and on every return to the foreground, and books every
   missed occurrence on its own date. No "mark as paid": a standing order leaves
@@ -280,6 +280,31 @@ updating. This has already been hit once.
 **Don't pass tight line heights to `T`.** The CSS source uses `54px/.94`, which
 crops Geist's ascenders on iOS. `primitives.tsx` clamps everything to
 `size * MIN_LEADING` (1.15); leave the clamp in place.
+
+**Home's "Left to spend" is budget − spent − planned, not budget − booked.** `queries/home.ts`
+splits the month at *now*, with the pure half in `queries/outlook.ts`:
+
+- **Spent** is money out dated up to now. A split writes every part up front, so
+  a part dated the 25th is a row on the 10th; it is *planned* until its day.
+- **Planned** is those booked-ahead rows plus every recurring occurrence that
+  hasn't been booked yet. `projectSchedules` walks from `next_due_at`, not from
+  now: an occurrence that has come due but hasn't been booked has no row, so
+  this is the only place it is counted. It spreads each occurrence with
+  `splitAmounts` and `addMonthsKeepingDay`, as the booking will, so the figure
+  projected is the figure written. Next month's planned figure comes from the
+  same list and is read against `monthlyBudgetCents` for next month.
+- **The forecast counts unplanned spending only**: `recurring_id IS NULL AND
+  IFNULL(split_index, 0) = 0`. Recurring rows and a split's later parts are
+  already in planned, so counting them in past months' tails would count rent
+  twice. A split's first part stays in, because that is the moment of purchase.
+  It is the median per-day rate of the last six finished months' tails (after
+  the same day of the month) times the days left. A month that recorded nothing
+  sits out, and with fewer than two months there is no forecast and the hero
+  falls back to the pace sentence.
+
+The ceiling is the budget, not income, because the importer drops incoming
+money. Trends' current-month bar still shows every booked row, later split
+parts included. That is a deliberate difference.
 
 **Spend and Trends sit outside the snapshot.** Both take query arguments — a
 period, a search term and a set of categories for Spend; a set of categories for

@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { Cadence, RecurringRow } from '../db/types';
 import { insertRow, listAlive, softDeleteRow, updateRow } from './crud';
 
-/** Scheduled money out, e.g. rent — powers the Home screen's "Next out" tile. */
+/** Scheduled money out, e.g. rent — projected into Home's "Coming up" card. */
 export const listRecurring = (db: SQLiteDatabase) =>
   listAlive<RecurringRow>(db, 'recurring', { orderBy: 'next_due_at' });
 
@@ -48,13 +48,3 @@ export const listDueRecurring = (db: SQLiteDatabase, at: number) =>
     params: [at],
     orderBy: 'next_due_at',
   });
-
-export async function nextDue(db: SQLiteDatabase, after: number): Promise<RecurringRow | null> {
-  const row = await db.getFirstAsync<RecurringRow>(
-    `SELECT * FROM recurring
-      WHERE deleted_at IS NULL AND next_due_at >= ?
-      ORDER BY next_due_at LIMIT 1`,
-    [after],
-  );
-  return row ?? null;
-}
