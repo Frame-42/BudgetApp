@@ -35,6 +35,8 @@ export function YouScreen({
   onReset,
   onLoadSample,
   onCopySampleImport,
+  openedFile,
+  onOpenedFileDone,
 }: {
   data: YouData;
   categories: { id: string; name: string }[];
@@ -46,6 +48,9 @@ export function YouScreen({
   onReset: () => void;
   onLoadSample: () => void;
   onCopySampleImport: () => Promise<void>;
+  /** A CSV opened in Budget from another app; its presence opens the import. */
+  openedFile: { name: string; text: string } | null;
+  onOpenedFileDone: () => void;
 }) {
   const styles = useStyles();
   const { w, fg } = useTheme();
@@ -253,11 +258,15 @@ export function YouScreen({
       />
 
       <ImportSheet
-        visible={importOpen}
-        onClose={() => setImportOpen(false)}
+        visible={importOpen || openedFile !== null}
+        onClose={() => {
+          setImportOpen(false);
+          if (openedFile) onOpenedFileDone();
+        }}
         categories={categories}
         onPlan={onPlanImport}
         onRun={onRunImport}
+        incoming={openedFile}
       />
     </View>
   );

@@ -44,6 +44,13 @@ clone. Weigh that before adding one, and prefer `npx expo install` over
 `ios/` and `android/` are gitignored prebuild output. Never hand-edit inside
 them — change `app.json` and let the next prebuild regenerate.
 
+`npm run ios` does **not** re-apply `app.json` when `ios/` already exists: it
+builds whatever Info.plist is there. After an `app.json` or plugin change, run
+`npx expo prebuild --platform ios` first. Its `pod install` fails with a Ruby
+`Encoding::CompatibilityError` unless the shell is UTF-8, so prefix it (or a
+retry inside `ios/`) with `LANG=en_US.UTF-8`. The "Open in Budget" document
+type was silently missing from the first build because of this.
+
 ## Layout
 
 | Path | Holds |
@@ -54,7 +61,7 @@ them — change `app.json` and let the next prebuild regenerate.
 | `src/db/` | `client.ts`, `migrations.ts`, `seed.ts`, `demo.ts`, `onboarding.ts`, `types.ts`, `ids.ts` |
 | `src/repo/` | Typed CRUD per table — the only place writes happen |
 | `src/queries/` | Derived figures per screen; pure, rows in / numbers out |
-| `src/import/` | Bank-export reading: `csv.ts`, `rules.ts` (MCC + merchant names), `plan.ts` |
+| `src/import/` | Bank-export reading: `csv.ts`, `rules.ts` (MCC + merchant names), `plan.ts`, `inbox.ts` ("Open in Budget" files) |
 | `src/export/` | CSV writing: `csv.ts` (the serializer), `share.ts` (file + share sheet) |
 | `src/state/BudgetProvider.tsx` | Opens the DB, recomputes on every change |
 | `src/devtools/` | `DevToolsContext.tsx` (the runtime on/off flag), `DevToolsPanel.tsx` (the dev-only actions card), `sampleBankExport.ts` (the test bench's bank file) |
@@ -398,6 +405,31 @@ makes re-importing an export idempotent. `datetime` is local ISO with the offset
 (`time.ts`'s `isoLocal`), never `toISOString()`: a 00:30 purchase in Zurich has a
 UTC date of the day before, and off-by-one dates in a budget app are worse than
 no export. Amounts are decimal euros in the file and cents everywhere else.
+
+**"Open in Budget" reads the inbox folder, not the URL.** `app.json` declares
+`public.comma-separated-values-text` as an `Alternate` document type with
+`LSSupportsOpeningDocumentsInPlace: false`, so iOS copies a shared CSV into the
+app's inbox and then wakes the app. On iOS 26 that is
+`tmp/com.framefr.budget-Inbox/`, not the `Documents/Inbox` older docs describe;
+both are scanned. Budget shows up in the share sheet's app row. Files'
+"Open With" lists only apps that open documents in place, so it shows nothing
+for us. `src/state/useOpenedFiles.ts` checks it on
+launch, on every return to the foreground, and on a `file:` URL event, and moves
+each file straight into `Documents/Opened/`. That move is required: `tmp/` is
+purgeable, and in testing iOS deleted the copy twice while its import sheet was
+still open.
+The URL alone can't be trusted: on a cold launch it reaches the scene delegate
+before any JS is listening, and `getInitialURL` reads launch options, which a
+scene-based app never gets. A file stays in `Opened/` until its import sheet is
+closed (imported or dismissed), so one opened mid-onboarding waits for the
+budget to exist instead of being lost. Because closing the sheet is the only
+thing that deletes a file, the scan offers every file whatever its name and
+deletes any folder. A filter on `.csv` would leave a file it skipped in
+`Opened/` forever. `App.tsx` switches to You, and
+`ImportSheet`'s `incoming` prop starts the flow past the picker. No native
+dependency was added, so Expo Go still runs the app. It just can't receive
+files, because the document type lives in Info.plist and only a dev build
+(`npm run ios`) carries it. Android has no intent filter yet.
 
 **Merchant memory outranks the MCC table.** A row whose type is
 `BENEFITS_SAVEBACK` is excluded first: the investment contribution is not
