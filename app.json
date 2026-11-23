@@ -10,6 +10,15 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.framefr.budget",
       "infoPlist": {
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "CSV",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": ["public.comma-separated-values-text"]
+          }
+        ],
+        "LSSupportsOpeningDocumentsInPlace": false,
         "UIApplicationSceneManifest": {
           "UIApplicationSupportsMultipleScenes": false,
           "UISceneConfigurations": {

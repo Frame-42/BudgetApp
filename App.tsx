@@ -24,6 +24,7 @@ import { BudgetProvider, useBudget } from './src/state/BudgetProvider';
 import { DevToolsProvider } from './src/devtools/DevToolsContext';
 import { useTransactionFeed } from './src/state/useTransactionFeed';
 import { useTrendsView } from './src/state/useTrendsView';
+import { useOpenedFiles } from './src/state/useOpenedFiles';
 import { centsToAmountInput, parseAmountToCents } from './src/format';
 import { partInMonth } from './src/db/split';
 import type { Cadence } from './src/db/types';
@@ -113,6 +114,26 @@ function Phone() {
     if (!editing && !entry.categoryId && data) set('categoryId')(data.add.categories[0]?.id ?? null);
   }, [data, entry.categoryId, editing]);
 
+  const endEdit = () => {
+    setEntry(draft.current ?? BLANK);
+    draft.current = null;
+    setEditing(null);
+  };
+
+  /* An edit belongs to the trip from Spend: leaving the Add tab abandons it,
+     rather than leaving a half-finished edit waiting behind the + button. */
+  const changeTab = (next: number) => {
+    if (editing && next !== 2) endEdit();
+    setTab(next);
+  };
+
+  /* "Open in Budget" lands on You, where the import lives. Not before onboarding
+     is done — the file waits in the Inbox until there is a budget to import into. */
+  const opened = useOpenedFiles();
+  useEffect(() => {
+    if (opened.file && data?.onboarded && tab !== 4) changeTab(4);
+  }, [opened.file, data?.onboarded]);
+
   if (!data) {
     return (
       <Background />
@@ -134,19 +155,6 @@ function Phone() {
     setEntry(entryFor(item));
     setEditing(item);
     setTab(2);
-  };
-
-  const endEdit = () => {
-    setEntry(draft.current ?? BLANK);
-    draft.current = null;
-    setEditing(null);
-  };
-
-  /* An edit belongs to the trip from Spend: leaving the Add tab abandons it,
-     rather than leaving a half-finished edit waiting behind the + button. */
-  const changeTab = (next: number) => {
-    if (editing && next !== 2) endEdit();
-    setTab(next);
   };
 
   const submit = async () => {
@@ -265,6 +273,8 @@ function Phone() {
       onReset={reset}
       onLoadSample={loadSampleData}
       onCopySampleImport={copySampleBankExport}
+      openedFile={opened.file}
+      onOpenedFileDone={() => opened.file && opened.done(opened.file)}
     />,
   ];
 

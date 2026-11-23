@@ -43,12 +43,15 @@ export function ImportSheet({
   categories,
   onPlan,
   onRun,
+  incoming = null,
 }: {
   visible: boolean;
   onClose: () => void;
   categories: { id: string; name: string }[];
   onPlan: (text: string) => Promise<ImportPlan>;
   onRun: (plan: ImportPlan) => Promise<number>;
+  /** A file another app opened in Budget: the sheet starts on it, past the picker. */
+  incoming?: { name: string; text: string } | null;
 }) {
   const styles = useStyles();
   const { color, fg } = useTheme();
@@ -62,34 +65,6 @@ export function ImportSheet({
   const [at, setAt] = useState(0);
   const [imported, setImported] = useState(0);
   const [clipboardHasCsv, setClipboardHasCsv] = useState(false);
-
-  /* Every open starts over. A half-reviewed plan from last time would be worse
-     than no plan: its counts describe a file that is no longer on screen. */
-  useEffect(() => {
-    if (!visible) return;
-    setMode('pick');
-    setBusy(false);
-    setError(null);
-    setPlan(null);
-    setQueue([]);
-    setAt(0);
-    setImported(0);
-    setClipboardHasCsv(false);
-    // Checked once per open rather than polled: reading the clipboard on iOS
-    // surfaces a system "pasted from" notice, so it should only happen right
-    // when the user would see the option it unlocks.
-    let cancelled = false;
-    Clipboard.getStringAsync()
-      .then((text) => {
-        if (!cancelled) setClipboardHasCsv(looksLikeImportableCsv(text));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [visible]);
-
-  if (!visible) return null;
 
   const planFromText = async (text: string, fallback: string) => {
     setBusy(true);
@@ -108,6 +83,39 @@ export function ImportSheet({
       setBusy(false);
     }
   };
+
+  /* Every open starts over. A half-reviewed plan from last time would be worse
+     than no plan: its counts describe a file that is no longer on screen. */
+  useEffect(() => {
+    if (!visible) return;
+    setMode('pick');
+    setBusy(false);
+    setError(null);
+    setPlan(null);
+    setQueue([]);
+    setAt(0);
+    setImported(0);
+    setClipboardHasCsv(false);
+    // The file was the choice; offering a picker for it would ask again.
+    if (incoming) {
+      planFromText(incoming.text, `${incoming.name} could not be read.`);
+      return;
+    }
+    // Checked once per open rather than polled: reading the clipboard on iOS
+    // surfaces a system "pasted from" notice, so it should only happen right
+    // when the user would see the option it unlocks.
+    let cancelled = false;
+    Clipboard.getStringAsync()
+      .then((text) => {
+        if (!cancelled) setClipboardHasCsv(looksLikeImportableCsv(text));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, incoming]);
+
+  if (!visible) return null;
 
   const pick = async () => {
     tapSelect();
@@ -203,7 +211,9 @@ export function ImportSheet({
             Import transactions
           </T>
           <Eyebrow alpha={0.3}>
-            {mode === 'review' ? `Review · ${at + 1} of ${queue.length}` : 'CSV or bank export'}
+            {mode === 'review'
+              ? `Review · ${at + 1} of ${queue.length}`
+              : incoming?.name ?? 'CSV or bank export'}
           </Eyebrow>
         </View>
       </View>
