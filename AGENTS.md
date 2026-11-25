@@ -44,6 +44,15 @@ clone. Weigh that before adding one, and prefer `npx expo install` over
 `ios/` and `android/` are gitignored prebuild output. Never hand-edit inside
 them — change `app.json` and let the next prebuild regenerate.
 
+The one exception to "the template builds the window" is
+`plugins/withSceneDelegate.js`: iOS 26 needs the UIScene lifecycle, so the plugin
+moves window creation and `startReactNative` out of `didFinishLaunching` and into
+the scene delegate. Don't put them back. A window built before its scene exists
+and attached afterwards renders normally but leaves system-hosted UI misplaced —
+the Export share sheet came up squeezed against the right edge. A prebuild
+replaces an older copy of the injected class, so re-run
+`LANG=en_US.UTF-8 npx expo prebuild --platform ios` after changing the plugin.
+
 `npm run ios` does **not** re-apply `app.json` when `ios/` already exists: it
 builds whatever Info.plist is there. After an `app.json` or plugin change, run
 `npx expo prebuild --platform ios` first. Its `pod install` fails with a Ruby
