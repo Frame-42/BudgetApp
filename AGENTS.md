@@ -53,6 +53,17 @@ the Export share sheet came up squeezed against the right edge. A prebuild
 replaces an older copy of the injected class, so re-run
 `LANG=en_US.UTF-8 npx expo prebuild --platform ios` after changing the plugin.
 
+The signing team is per developer, not in the repo: `app.config.js` reads
+`APPLE_TEAM_ID` from the git-ignored `.env.local` into `ios.appleTeamId`, and
+without it `expo run:ios` picks a team itself. With a team preset, Expo leaves
+`-allowProvisioningUpdates` off its `xcodebuild` call, so the first device build
+for a new team fails with "No profiles for 'com.framefr.budget'". Build once with
+`xcodebuild -workspace ios/Budget.xcworkspace -scheme Budget -configuration Release
+-destination id=<udid> -allowProvisioningUpdates -allowProvisioningDeviceRegistration build`
+to create the profile; Expo finds it after that. Switching teams also means
+deleting the installed app first, since iOS refuses to replace an app signed by
+another team (`MismatchedApplicationIdentifierEntitlement`).
+
 `npm run ios` does **not** re-apply `app.json` when `ios/` already exists: it
 builds whatever Info.plist is there. After an `app.json` or plugin change, run
 `npx expo prebuild --platform ios` first. Its `pod install` fails with a Ruby
